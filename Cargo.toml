@@ -34,3 +34,13 @@ members = [
     "libs/utils",
     "libs/config",
 ]
+
+[profile.dev]
+debug = 1
+opt-level = 1
+lto = "thin"
+
+[profile.release]
+debug = 1
+opt-level = 3
+lto = "fat"
