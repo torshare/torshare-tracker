@@ -1,0 +1,9 @@
+[package]
+name = "ts-utils"
+license-file.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
