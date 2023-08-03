@@ -1,6 +1,8 @@
 use bytes::Bytes;
 use hyper::{Body, Response, StatusCode};
 
+use crate::worker::WorkerResponse;
+
 pub(super) struct HttpResponse {
     pub data: Bytes,
 }
@@ -23,6 +25,24 @@ impl From<Vec<u8>> for HttpResponse {
     #[inline]
     fn from(vec: Vec<u8>) -> Self {
         Self::from(Bytes::from(vec))
+    }
+}
+
+impl From<String> for HttpResponse {
+    #[inline]
+    fn from(string: String) -> Self {
+        Self::from(Bytes::from(string))
+    }
+}
+
+impl From<WorkerResponse> for HttpResponse {
+    #[inline]
+    fn from(response: WorkerResponse) -> Self {
+        match response {
+            WorkerResponse::Announce(_) => Self::from("Announce"),
+            WorkerResponse::Scrape => Self::from("Scrape"),
+            WorkerResponse::None => Self::from("None"),
+        }
     }
 }
 

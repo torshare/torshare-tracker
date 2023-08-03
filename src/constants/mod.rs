@@ -32,11 +32,14 @@ constant_strings! {
     (TRACKER_RESPONSE_INCOMPLETE, "incomplete"),
     (TRACKER_RESPONSE_PEERS, "peers"),
     /// http://bittorrent.org/beps/bep_0007.html
-    (TRACKER_RESPONSE_PEERS_IPV6, "peers6"),
+    (TRACKER_RESPONSE_PEERS6, "peers6"),
     (TRACKER_RESPONSE_DOWNLOADED, "downloaded"),
     (TRACKER_RESPONSE_DOWNLOADERS, "downloaders"),
     (TRACKER_RESPONSE_CRYPTO_FLAGS, "crypto_flags"),
     (TRACKER_RESPONSE_RETRY_IN, "retry in"),
+    (TRACKER_RESPONSE_PEER_ID, "peer id"),
+    (TRACKER_RESPONSE_IP, "ip"),
+    (TRACKER_RESPONSE_PORT, "port"),
     (TRACKER_RESPONSE_NEVER, "never"),
 
     // TRACKER ERRORS

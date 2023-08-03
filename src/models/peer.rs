@@ -1,5 +1,9 @@
-use super::common::{EpochTime, IpType, NumOfBytes, PeerId};
+use crate::constants::{TRACKER_RESPONSE_IP, TRACKER_RESPONSE_PEER_ID, TRACKER_RESPONSE_PORT};
+
+use super::common::{Bencode, EpochTime, Ip, IpType, NumOfBytes, PeerId, Port};
+use bip_bencode::BencodeMut;
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, SocketAddr};
 
 pub struct Peer {
@@ -41,5 +45,25 @@ impl Peer {
         }
 
         IpType::V6
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+pub struct ResponsePeer<I: Ip> {
+    /// The peer's ID.
+    pub peer_id: PeerId,
+    /// The peer's IP address.
+    pub ip_addr: I,
+    /// The peer's port number.
+    pub port: Port,
+}
+
+impl<'a, I: Ip + std::fmt::Display> Bencode<'a> for ResponsePeer<I> {
+    fn bencode(&self) -> BencodeMut<'a> {
+        ben_map! {
+            TRACKER_RESPONSE_PEER_ID => ben_bytes!(self.peer_id.0.to_vec()),
+            TRACKER_RESPONSE_IP => ben_bytes!(self.ip_addr.to_string()),
+            TRACKER_RESPONSE_PORT => ben_int!(i64::from(self.port.0))
+        }
     }
 }

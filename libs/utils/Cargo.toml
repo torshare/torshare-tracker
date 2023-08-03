@@ -7,3 +7,7 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+hex = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+percent-encoding = "2.3"
+itoa = "1.0.9"

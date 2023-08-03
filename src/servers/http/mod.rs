@@ -1,5 +1,6 @@
 mod error;
 mod handler;
+mod request;
 mod response;
 
 use hyper::server::conn::AddrStream;
@@ -9,7 +10,7 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use self::handler::RequestHandler;
+use self::handler::Handler;
 use crate::signals::global_shutdown_signal;
 use crate::worker::Worker;
 
@@ -30,11 +31,15 @@ impl HttpServer {
         let make_service = make_service_fn(|socket: &AddrStream| {
             let addr = socket.remote_addr();
             let worker = self.worker.clone();
-            async move { Ok::<_, Infallible>(RequestHandler { addr, worker }) }
+            async move { Ok::<_, Infallible>(Handler { addr, worker }) }
         });
 
         // Then bind and serve...
-        let server = Server::bind(&addr).serve(make_service);
+        let server = Server::bind(&addr)
+            .tcp_keepalive(None)
+            .http1_keepalive(false)
+            .http1_only(true)
+            .serve(make_service);
 
         // And now add a graceful shutdown signal...
         let graceful = server.with_graceful_shutdown(global_shutdown_signal());

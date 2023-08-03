@@ -7,7 +7,7 @@ use std::error::Error as StdError;
 
 #[allow(unused)]
 #[derive(Debug)]
-pub(super) enum Error {
+pub(super) enum HttpError {
     NotFound,
     RequestTimeout,
     Unauthorized,
@@ -17,35 +17,35 @@ pub(super) enum Error {
 
 #[allow(unused)]
 /// Alias for a `Result` with the error type `Error`.
-pub(super) type Result<T> = std::result::Result<T, Error>;
+pub(super) type Result<T> = std::result::Result<T, HttpError>;
 
-impl From<hyper::Error> for Error {
+impl From<hyper::Error> for HttpError {
     fn from(err: hyper::Error) -> Self {
-        Error::Other(err.to_string())
+        HttpError::Other(err.to_string())
     }
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for HttpError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::NotFound => write!(f, "{}", NOT_FOUND),
-            Error::RequestTimeout => write!(f, "{}", REQUEST_TIMEOUT),
-            Error::Unauthorized => write!(f, "{}", UNAUTHORIZED),
-            Error::BadRequest(reason) => write!(f, "{}", reason),
-            Error::Other(reason) => write!(f, "{}", reason),
+            HttpError::NotFound => write!(f, "{}", NOT_FOUND),
+            HttpError::RequestTimeout => write!(f, "{}", REQUEST_TIMEOUT),
+            HttpError::Unauthorized => write!(f, "{}", UNAUTHORIZED),
+            HttpError::BadRequest(reason) => write!(f, "{}", reason),
+            HttpError::Other(reason) => write!(f, "{}", reason),
         }
     }
 }
 
-impl StdError for Error {}
+impl StdError for HttpError {}
 
-impl Into<Response<Body>> for Error {
+impl Into<Response<Body>> for HttpError {
     fn into(self) -> Response<Body> {
         let status_code = match self {
-            Error::NotFound => StatusCode::NOT_FOUND,
-            Error::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Error::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
-            Error::Unauthorized => StatusCode::UNAUTHORIZED,
+            HttpError::NotFound => StatusCode::NOT_FOUND,
+            HttpError::BadRequest(_) => StatusCode::BAD_REQUEST,
+            HttpError::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
+            HttpError::Unauthorized => StatusCode::UNAUTHORIZED,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
@@ -56,8 +56,8 @@ impl Into<Response<Body>> for Error {
     }
 }
 
-impl From<WorkerError> for Error {
+impl From<WorkerError> for HttpError {
     fn from(err: WorkerError) -> Self {
-        Error::Other(err.to_string())
+        HttpError::Other(err.to_string())
     }
 }

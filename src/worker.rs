@@ -1,15 +1,18 @@
+use log::info;
 use std::error::Error as StdError;
 use std::fmt;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::models::tracker::{AnnounceRequest, AnnounceResponse};
+
 pub enum WorkerTask {
-    Announce,
+    Announce(AnnounceRequest),
     Scrape,
     Shutdown,
 }
 
 pub enum WorkerResponse {
-    Announce(Vec<u8>),
+    Announce(AnnounceResponse),
     Scrape,
     None,
 }
@@ -43,7 +46,7 @@ impl Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        println!("Dropping Worker");
+        info!("Dropping Worker");
         let _ = self.sender.try_send((WorkerTask::Shutdown, oneshot::channel().0));
     }
 }
@@ -58,7 +61,10 @@ impl WorkHandler {
         while let Some(msg) = self.receiver.recv().await {
             let (task, sender) = msg;
             let _ = match task {
-                WorkerTask::Announce => sender.send(WorkerResponse::Announce("hello, world".into())),
+                WorkerTask::Announce(_) => {
+                    let response = AnnounceResponse::default();
+                    sender.send(WorkerResponse::Announce(response))
+                }
                 WorkerTask::Scrape => sender.send(WorkerResponse::Scrape),
                 WorkerTask::Shutdown => {
                     self.receiver.close();
@@ -100,3 +106,5 @@ impl fmt::Display for WorkerError {
 }
 
 impl StdError for WorkerError {}
+
+pub type WorkerResult = std::result::Result<WorkerResponse, WorkerError>;
