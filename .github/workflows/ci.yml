@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  RUSTFLAGS: -Dwarnings
+  CARGO_TERM_COLOR: always
+
+jobs:
+  formatting:
+    name: Check Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          profile: minimal
+          components: rustfmt, clippy
+          override: true
+
+      - run: cargo fmt --all -- --check
+
+  test:
+    name: Test Rust ${{ matrix.rust }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        rust:
+          - stable
+          - beta
+          - nightly
+          - 1.69.0
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          profile: minimal
+          components: clippy
+          override: true
+
+      - name: Info
+        run: |
+          rustup --version
+          cargo --version
+          cargo clippy --version
+
+      - name: Run Tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          all-features: true
+          args: --all --no-fail-fast --verbose
+        env:
+          CARGO_INCREMENTAL: '0'
+          RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+      
+      - id: coverage 
+        name: Generate Coverage Report 
+        uses: alekitto/grcov@v0.2
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ${{ steps.coverage.outputs.report }}
+          flag: rust
+          verbose: true
+          fail_ci_if_error: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
