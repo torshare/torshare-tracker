@@ -1,14 +1,19 @@
 name: CI
 
-on: [pull_request, push]
+on:
+  pull_request:
+  push:
+    branches:
+      - master
 
 permissions:
-  contents: read
+  contents: read # to fetch code (actions/checkout)
 
 env:
   RUSTFLAGS: -Dwarnings
   RUST_LOG: info
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
   formatting:
@@ -45,6 +50,14 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: 0-${{ matrix.os }}-tstracker-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -73,6 +86,14 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: 0-ubuntu-latest-tstracker-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
