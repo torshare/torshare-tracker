@@ -6,3 +6,5 @@ llvm: true
 ignore:
   - "*smallvec*"
   - "*lazy_static*"
+excl-start: (.*)begin-ignore-line(.*)
+excl-stop: (.*)end-ignore-line(.*)

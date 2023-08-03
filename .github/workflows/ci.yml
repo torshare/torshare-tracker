@@ -123,6 +123,16 @@ jobs:
         uses: alekitto/grcov@v0.2
         with:
           config: configs/grcov.yml
+      
+      - name: Pre-installing rust-covfix
+        uses: actions-rs/install@v0.1
+        with:
+          crate: rust-covfix
+          use-tool-cache: true
+
+      - name: Fix coverage data
+        id: fix-coverage
+        run: rust-covfix lcov.info -o lcov.info
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
