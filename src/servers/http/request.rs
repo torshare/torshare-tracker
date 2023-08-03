@@ -17,7 +17,6 @@ pub(super) trait HttpRequest {
 }
 
 impl HttpRequest for hyper::Request<hyper::Body> {
-    #[inline]
     fn query_params<'de, T: serde::Deserialize<'de>>(&'de self) -> Result<T> {
         let query = self.uri().query().unwrap_or_default();
         query::from_bytes(query.as_bytes()).map_err(|err| HttpError::BadRequest(err.to_string()))

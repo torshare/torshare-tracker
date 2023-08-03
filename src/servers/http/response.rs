@@ -36,7 +36,6 @@ impl From<String> for HttpResponse {
 }
 
 impl From<WorkerResponse> for HttpResponse {
-    #[inline]
     fn from(response: WorkerResponse) -> Self {
         match response {
             WorkerResponse::Announce(_) => Self::from("Announce"),
@@ -47,7 +46,6 @@ impl From<WorkerResponse> for HttpResponse {
 }
 
 impl Into<Response<Body>> for HttpResponse {
-    #[inline]
     fn into(self) -> Response<Body> {
         let mut response = Response::new(self.data.into());
         *response.status_mut() = StatusCode::OK;

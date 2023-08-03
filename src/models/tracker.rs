@@ -32,7 +32,6 @@ pub enum AnnounceEvent {
 }
 
 impl From<u32> for AnnounceEvent {
-    #[inline]
     fn from(val: u32) -> Self {
         match val {
             2 => AnnounceEvent::Started,
