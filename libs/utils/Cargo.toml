@@ -11,3 +11,7 @@ hex = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 percent-encoding = "2.3"
 itoa = "1.0.9"
+
+[features]
+# Introduce to avoid inlining methods during coverage calculation.
+coverage = []

@@ -79,7 +79,8 @@ pub struct AnnounceRequest {
     pub numwant: Option<u32>,
 }
 
-#[inline]
+#[cfg_attr(feature = "coverage", inline(never))]
+#[cfg_attr(not(feature = "coverage"), inline(always))]
 fn default_compact() -> bool {
     true
 }

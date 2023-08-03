@@ -21,24 +21,28 @@ pub struct BencodeSerializer {
 }
 
 impl BencodeSerializer {
-    #[inline]
+    #[cfg_attr(feature = "coverage", inline(never))]
+    #[cfg_attr(not(feature = "coverage"), inline(always))]
     pub fn new() -> Self {
         Self::default()
     }
 
-    #[inline]
+    #[cfg_attr(feature = "coverage", inline(never))]
+    #[cfg_attr(not(feature = "coverage"), inline(always))]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             output: Vec::with_capacity(capacity),
         }
     }
 
-    #[inline]
+    #[cfg_attr(feature = "coverage", inline(never))]
+    #[cfg_attr(not(feature = "coverage"), inline(always))]
     fn push_slice<T: AsRef<[u8]>>(&mut self, token: T) {
         self.output.extend_from_slice(token.as_ref());
     }
 
-    #[inline]
+    #[cfg_attr(feature = "coverage", inline(never))]
+    #[cfg_attr(not(feature = "coverage"), inline(always))]
     fn push(&mut self, token: u8) {
         self.output.push(token);
     }

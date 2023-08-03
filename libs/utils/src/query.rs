@@ -9,7 +9,8 @@ use std::borrow::Cow;
 pub use serde::de::value::Error;
 
 /// Create and return an instance of `UrlEncodedParse` with the provided byte slice as the `input` field.
-#[inline]
+#[cfg_attr(feature = "coverage", inline(never))]
+#[cfg_attr(not(feature = "coverage"), inline(always))]
 pub fn parse(input: &[u8]) -> UrlEncodedParse<'_> {
     UrlEncodedParse { input }
 }
@@ -372,7 +373,8 @@ fn replace_plus(input: &[u8]) -> Cow<'_, [u8]> {
     }
 }
 
-#[inline]
+#[cfg_attr(feature = "coverage", inline(never))]
+#[cfg_attr(not(feature = "coverage"), inline(always))]
 fn decode(input: &[u8]) -> Cow<[u8]> {
     let replaced = replace_plus(input);
     match percent_decode(&replaced).into() {

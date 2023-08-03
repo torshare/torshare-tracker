@@ -8,28 +8,32 @@ pub(super) struct HttpResponse {
 }
 
 impl From<Bytes> for HttpResponse {
-    #[inline]
+    #[cfg_attr(feature = "coverage", inline(never))]
+    #[cfg_attr(not(feature = "coverage"), inline(always))]
     fn from(data: Bytes) -> Self {
         Self { data }
     }
 }
 
 impl From<&'static str> for HttpResponse {
-    #[inline]
+    #[cfg_attr(feature = "coverage", inline(never))]
+    #[cfg_attr(not(feature = "coverage"), inline(always))]
     fn from(slice: &'static str) -> Self {
         Self::from(Bytes::from(slice.as_bytes()))
     }
 }
 
 impl From<Vec<u8>> for HttpResponse {
-    #[inline]
+    #[cfg_attr(feature = "coverage", inline(never))]
+    #[cfg_attr(not(feature = "coverage"), inline(always))]
     fn from(vec: Vec<u8>) -> Self {
         Self::from(Bytes::from(vec))
     }
 }
 
 impl From<String> for HttpResponse {
-    #[inline]
+    #[cfg_attr(feature = "coverage", inline(never))]
+    #[cfg_attr(not(feature = "coverage"), inline(always))]
     fn from(string: String) -> Self {
         Self::from(Bytes::from(string))
     }

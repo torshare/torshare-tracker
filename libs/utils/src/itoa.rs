@@ -5,7 +5,6 @@ pub trait Itoa {
 macro_rules! itoa_impl_for_integer {
     ($int_type:ty) => {
         impl Itoa for $int_type {
-            #[inline]
             fn itoa(&self) -> Vec<u8> {
                 let mut buffer = itoa::Buffer::new();
                 buffer.format(*self).into()
