@@ -1,0 +1,8 @@
+branch: true
+ignore-not-existing: true
+output-type: lcov
+output-path: ./lcov.info
+llvm: true
+ignore:
+  - "*smallvec*"
+  - "*lazy_static*"

@@ -39,7 +39,6 @@ jobs:
         rust:
           - stable
           - beta
-          - nightly
           - 1.69.0
 
     steps:
@@ -65,6 +64,35 @@ jobs:
         with:
           command: test
           all-features: true
+          args: --all --verbose
+
+  coverage:
+    name: Report Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          profile: minimal
+          components: clippy
+          override: true
+
+      - name: Info
+        run: |
+          rustup --version
+          cargo --version
+          cargo clippy --version
+
+      - name: Run Tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          all-features: true
           args: --all --no-fail-fast --verbose
         env:
           CARGO_INCREMENTAL: '0'
@@ -74,6 +102,8 @@ jobs:
       - id: coverage 
         name: Generate Coverage Report 
         uses: alekitto/grcov@v0.2
+        with:
+          config: configs/grcov.yml
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
