@@ -1,0 +1,15 @@
+branch: true
+ignore-not-existing: true
+output-type: lcov
+output-path: ./lcov.info
+llvm: true
+ignore:
+  - "/*"
+  - "C:/*"
+  - "../*"
+  - "*/tests/*"
+  - "*test.rs"
+  - "*smallvec*"
+  - "*lazy_static*"
+excl-start: (.*)begin-ignore-line(.*)
+excl-stop: (.*)end-ignore-line(.*)

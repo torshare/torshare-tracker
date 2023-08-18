@@ -1,0 +1,111 @@
+# Possible values for log_level: "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"
+log_level = "INFO"
+
+# Specifies the file path for the infohash blocklist.
+# This file contains a list of infohashes that are to be blocked.
+infohash_blocklist_file = "" # e.g. "blocklist.txt"
+
+# HTTP server settings
+[server.http]
+
+# The API key used for performing tracker API calls.
+api_key = ""
+
+# The port on which the HTTP server will listen.
+port = 3000
+
+# The host address to bind the HTTP server. Set to "0.0.0.0" to listen on all available interfaces.
+host = "0.0.0.0"
+
+# Setting this to true will log HTTP request information. This may impact performance.
+log_request = false
+
+# If using a reverse proxy, specify the header containing the actual client IP address.
+ip_forward_header_name = "" # e.g. "CF-Connecting-IP"
+
+# Sets whether to use keep-alive for HTTP/1 connections. If true, it may improve performance when using a reverse proxy.
+enable_keep_alive = false
+
+# The maximum number of seconds to wait for the next request when keep-alive is enabled.
+keep_alive_idle_time = 10
+
+# Set the maximum buffer size for the connection in bytes.
+max_read_buffer_size = 4096
+
+# The maximum allowed duration in secs for processing an incoming request.
+request_timeout = 10
+
+# Set to true to gzip scrape response. Gzip will only happen if the response size is greater than 2KB.
+gzip_scrape = true
+
+# Maximum number of pending connections that the server can hold in the backlog.
+connection_backlog_size = 2048
+
+# Maximum number of concurrent requests that the server can handle simultaneously.
+max_concurrent_requests = 20000
+
+# UDP server settings
+[server.udp]
+
+# The port on which the UDP server will listen.
+port = 3000
+
+# The host address to bind the UDP server. Set to "0.0.0.0" to listen on all available interfaces.
+host = "0.0.0.0"
+
+# The key used for encrypting UDP connection IDs. Leave empty for no encryption.
+secret_key = ""
+
+[tracker]
+# If true, the tracker will automatically register torrents on announce.
+auto_register_torrent = true
+
+# The interval in seconds that the client should wait between sending regular requests to the tracker.
+announce_interval = 1800
+
+# Minimum announce interval in seconds. Clients must not reannounce more frequently than this.
+min_announce_interval = 900
+
+# Scrape interval in seconds.
+scrape_interval = 1800
+
+# The default number of peers returned for announce request.
+default_numwant = 20
+
+# The maximum number of peers returned for announce request.
+max_numwant = 40
+
+# If true, the tracker will accept HTTP connections for announce.
+allow_http_announce = true
+
+# If true, the tracker will accept UDP connections for announce.
+allow_udp_announce = true
+
+# If true, the tracker will accept HTTP connections for scrape.
+allow_http_scrape = true
+
+# If true, the tracker will accept UDP connections for scrape.
+allow_udp_scrape = true
+
+# Set to true to allow a full scrape of the tracker (scraping all torrents).
+allow_full_scrape = false
+
+# The duration of time in secs for which a full scrape is cached.
+full_scrape_cache_ttl = 600
+
+# The maximum number of torrents to scrape in a single request.
+max_multi_scrape_count = 64
+
+[storage]
+
+# The type of storage to use for quick retrieval of peer information. Set it to "redis" when using multiple instances of the tracker.
+type = "memory"
+
+# Redis storage settings (used when the storage type is "redis").
+[storage.redis]
+
+# The URL to connect to the Redis server.
+url = "redis://127.0.0.1:6379"
+
+[storage.memory]
+
