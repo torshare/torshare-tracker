@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use tokio::sync::RwLock;
+use ts_utils::shared::Shared;
 
 use super::{Processor, Result, Storage};
 use crate::{
@@ -13,20 +14,44 @@ use crate::{
     },
 };
 
+static DEFAULT_SHARDS: usize = 1024;
+
 #[derive(Debug)]
 pub struct MemoryStorage {
-    swarms: RwLock<TorrentSwarmDict>,
-    stats: RwLock<TorrentStatsDict>,
+    shards: Vec<Shard>,
 }
 
 impl MemoryStorage {
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            swarms: RwLock::new(Default::default()),
-            stats: RwLock::new(Default::default()),
-        }
+        Self::with_shards(DEFAULT_SHARDS)
     }
+
+    #[must_use]
+    pub fn with_shards(shard_count: usize) -> Self {
+        assert!(shard_count > 0);
+        let mut shards = Vec::with_capacity(shard_count);
+        for _i in 0..shard_count {
+            shards.push(Shard::default());
+        }
+
+        Self { shards }
+    }
+
+    fn get_shard(&self, info_hash: &InfoHash) -> &Shard {
+        &self.shards[self.get_shard_index(info_hash.as_ref())]
+    }
+
+    fn get_shard_index(&self, data: &[u8]) -> usize {
+        let bytes = data[0..4].try_into().unwrap();
+        u32::from_be_bytes(bytes) as usize % self.shards.len()
+    }
+}
+
+#[derive(Debug, Default)]
+struct Shard {
+    swarms: RwLock<TorrentSwarmDict>,
+    stats: RwLock<TorrentStatsDict>,
 }
 
 macro_rules! process_peers {
@@ -41,13 +66,12 @@ macro_rules! process_peers {
 
 macro_rules! write_swarm {
     ($self:expr, $info_hash:expr) => {
-        $self.swarms.write().await.get_mut_swarm($info_hash)?
-    };
-}
-
-macro_rules! write_stats {
-    ($self:expr, $info_hash:expr) => {
-        $self.stats.write().await.get_mut_stats($info_hash)?
+        $self
+            .get_shard($info_hash)
+            .swarms
+            .write()
+            .await
+            .get_mut_swarm($info_hash)?
     };
 }
 
@@ -56,44 +80,65 @@ impl Storage for MemoryStorage {
     async fn insert_torrent(
         &self,
         info_hash: &InfoHash,
-        tor_stats: Option<TorrentStats>,
+        stats: Option<TorrentStats>,
     ) -> Result<()> {
-        self.swarms
+        let info_hash = Shared::new(info_hash.clone());
+        let shard = self.get_shard(&info_hash);
+
+        shard
+            .swarms
             .write()
             .await
             .insert(info_hash.clone(), TorrentSwarm::default());
 
-        self.stats.write().await.insert(
-            info_hash.clone(),
-            tor_stats.unwrap_or_else(|| TorrentStats::default()),
-        );
+        shard
+            .stats
+            .write()
+            .await
+            .insert(info_hash, stats.unwrap_or_else(|| Default::default()));
 
         Ok(())
     }
 
     async fn has_torrent(&self, info_hash: &InfoHash) -> Result<bool> {
-        Ok(self.stats.read().await.contains_key(info_hash))
+        Ok(self
+            .get_shard(&info_hash)
+            .stats
+            .read()
+            .await
+            .contains_key(info_hash))
     }
 
     async fn remove_torrent(&mut self, info_hash: &InfoHash) -> Result<()> {
-        self.swarms.write().await.remove(info_hash);
-        self.stats.write().await.remove(info_hash);
+        let shard = self.get_shard(&info_hash);
+
+        shard.swarms.write().await.remove(info_hash);
+        shard.stats.write().await.remove(info_hash);
 
         Ok(())
     }
 
     async fn get_torrent_stats(&self, info_hash: &InfoHash) -> Result<Option<TorrentStats>> {
-        Ok(self.stats.read().await.get(info_hash).cloned())
+        let stats = self
+            .get_shard(&info_hash)
+            .stats
+            .read()
+            .await
+            .get(info_hash)
+            .cloned();
+
+        Ok(stats)
     }
 
     async fn get_multi_torrent_stats(
         &self,
         info_hashes: Vec<InfoHash>,
     ) -> Result<Vec<(InfoHash, TorrentStats)>> {
-        let stats = self.stats.read().await;
         let mut result = Vec::with_capacity(info_hashes.len());
-
         for info_hash in info_hashes {
+            let shard = self.get_shard(&info_hash);
+            let stats = shard.stats.read().await;
+
             if let Some(stat) = stats.get(&info_hash) {
                 result.push((info_hash, stat.clone()));
             }
@@ -106,8 +151,14 @@ impl Storage for MemoryStorage {
         &self,
         processor: &mut dyn Processor<TorrentStatsDict>,
     ) -> Result<()> {
-        let stats = self.stats.read().await;
-        let _ = processor.process(&stats);
+        let shards = &self.shards;
+        for shard in shards {
+            let stats = shard.stats.read().await;
+            if !processor.process(&stats) {
+                return Ok(());
+            }
+        }
+
         Ok(())
     }
 
@@ -118,7 +169,13 @@ impl Storage for MemoryStorage {
         peer: Peer,
         peer_type: PeerType,
     ) -> Result<()> {
-        write_swarm!(self, info_hash).insert_peer(peer_id.clone(), peer, peer_type);
+        if write_swarm!(self, info_hash)
+            .insert_peer(peer_id.clone(), peer, peer_type)
+            .is_none()
+        {
+            return self.update_torrent_stats(info_hash).await;
+        }
+
         Ok(())
     }
 
@@ -128,8 +185,9 @@ impl Storage for MemoryStorage {
         peer_id: &PeerIdKey,
         peer: Peer,
     ) -> Result<()> {
-        write_swarm!(self, info_hash).promote_peer(peer_id, peer);
-        write_stats!(self, info_hash).incr_completed();
+        if write_swarm!(self, info_hash).promote_peer(peer_id, peer) {
+            return self.incr_completed(info_hash).await;
+        }
 
         Ok(())
     }
@@ -141,7 +199,10 @@ impl Storage for MemoryStorage {
         peer: Peer,
         peer_type: PeerType,
     ) -> Result<()> {
-        write_swarm!(self, info_hash).update_or_insert_peer(peer_id, peer, peer_type);
+        if write_swarm!(self, info_hash).update_or_insert_peer(peer_id, peer, peer_type) {
+            return self.update_torrent_stats(info_hash).await;
+        }
+
         Ok(())
     }
 
@@ -151,8 +212,8 @@ impl Storage for MemoryStorage {
         peer_type: PeerType,
         processor: &mut dyn Processor<PeerDict>,
     ) -> Result<()> {
-        let torrents = self.swarms.read().await;
-        let swarm = torrents.get_swarm(info_hash)?;
+        let swarms = self.get_shard(info_hash).swarms.read().await;
+        let swarm = swarms.get_swarm(info_hash)?;
 
         match peer_type {
             PeerType::Leecher => {
@@ -176,7 +237,46 @@ impl Storage for MemoryStorage {
         peer_id: &PeerIdKey,
         peer_type: PeerType,
     ) -> Result<Option<Peer>> {
-        Ok(write_swarm!(self, info_hash).remove_peer(&peer_id, peer_type))
+        if let Some(peer) = write_swarm!(self, info_hash).remove_peer(&peer_id, peer_type) {
+            self.update_torrent_stats(info_hash).await?;
+            return Ok(Some(peer));
+        }
+
+        Ok(None)
+    }
+}
+
+impl MemoryStorage {
+    async fn incr_completed(&self, info_hash: &InfoHash) -> Result<()> {
+        self.get_shard(info_hash)
+            .stats
+            .write()
+            .await
+            .get_mut_stats(info_hash)?
+            .incr_completed();
+
+        self.update_torrent_stats(info_hash).await
+    }
+
+    async fn update_torrent_stats(&self, info_hash: &InfoHash) -> Result<()> {
+        let shard = self.get_shard(info_hash);
+
+        let (seeders, leechers) = {
+            let swarms = shard.swarms.read().await;
+            let swarm = swarms.get_swarm(info_hash)?;
+            (
+                swarm.get_seeders().len() as u32,
+                swarm.get_leechers().len() as u32,
+            )
+        };
+
+        let mut stats = shard.stats.write().await;
+        let torrent_stats: &mut TorrentStats = stats.get_mut_stats(info_hash)?;
+
+        torrent_stats.seeders = seeders;
+        torrent_stats.leechers = leechers;
+
+        Ok(())
     }
 }
 
@@ -188,7 +288,7 @@ impl SwarmGet for tokio::sync::RwLockReadGuard<'_, TorrentSwarmDict> {
     fn get_swarm(&self, info_hash: &InfoHash) -> Result<&TorrentSwarm> {
         match self.get(info_hash) {
             Some(torrent) => Ok(torrent),
-            None => Err(TRACKER_ERROR_NOT_FOUND_TORRENT.to_string()),
+            None => Err(TRACKER_ERROR_NOT_FOUND_TORRENT.into()),
         }
     }
 }
@@ -201,7 +301,7 @@ impl SwarmGetMut for tokio::sync::RwLockWriteGuard<'_, TorrentSwarmDict> {
     fn get_mut_swarm(&mut self, info_hash: &InfoHash) -> Result<&mut TorrentSwarm> {
         match self.get_mut(info_hash) {
             Some(torrent) => Ok(torrent),
-            None => Err(TRACKER_ERROR_NOT_FOUND_TORRENT.to_string()),
+            None => Err(TRACKER_ERROR_NOT_FOUND_TORRENT.into()),
         }
     }
 }
@@ -213,8 +313,8 @@ trait StatsGetMut {
 impl StatsGetMut for tokio::sync::RwLockWriteGuard<'_, TorrentStatsDict> {
     fn get_mut_stats(&mut self, info_hash: &InfoHash) -> Result<&mut TorrentStats> {
         match self.get_mut(info_hash) {
-            Some(stats) => Ok(stats),
-            None => Err(TRACKER_ERROR_NOT_FOUND_TORRENT.to_string()),
+            Some(torrent) => Ok(torrent),
+            None => Err(TRACKER_ERROR_NOT_FOUND_TORRENT.into()),
         }
     }
 }
@@ -236,10 +336,10 @@ mod tests {
     async fn create_storage() -> MemoryStorage {
         let storage = MemoryStorage::new();
         let info_hash: InfoHash = INFOHASH_A.parse().unwrap();
-        let tor_stats = TorrentStats::default();
+        let torrent = Default::default();
 
         storage
-            .insert_torrent(&info_hash, Some(tor_stats))
+            .insert_torrent(&info_hash, Some(torrent))
             .await
             .unwrap();
 
@@ -264,15 +364,17 @@ mod tests {
     async fn test_insert_torrent() {
         let storage = create_storage().await;
         let info_hash: InfoHash = INFOHASH_A.parse().unwrap();
+        let shard = storage.get_shard(&info_hash);
 
-        assert!(storage.swarms.read().await.contains_key(&info_hash));
-        assert!(storage.stats.read().await.contains_key(&info_hash));
+        assert!(shard.swarms.read().await.contains_key(&info_hash));
+        assert!(shard.stats.read().await.contains_key(&info_hash));
     }
 
     #[tokio::test]
     async fn test_has_torrent() {
         let storage = create_storage().await;
         let info_hash: InfoHash = INFOHASH_A.parse().unwrap();
+
         assert!(storage.has_torrent(&info_hash).await.unwrap());
     }
 
@@ -283,16 +385,18 @@ mod tests {
 
         storage.remove_torrent(&info_hash).await.unwrap();
 
-        assert!(!storage.swarms.read().await.contains_key(&info_hash));
-        assert!(!storage.stats.read().await.contains_key(&info_hash));
+        let shard = storage.get_shard(&info_hash);
+
+        assert!(!shard.swarms.read().await.contains_key(&info_hash));
+        assert!(!shard.swarms.read().await.contains_key(&info_hash));
     }
 
     #[tokio::test]
     async fn test_get_torrent_stats() {
         let storage = create_storage().await;
         let info_hash: InfoHash = INFOHASH_A.parse().unwrap();
-
         let stats = storage.get_torrent_stats(&info_hash).await.unwrap();
+
         assert!(stats.is_some());
     }
 
@@ -300,8 +404,8 @@ mod tests {
     async fn test_get_torrent_stats_not_found() {
         let storage = create_storage().await;
         let info_hash: InfoHash = INFOHASH_B.parse().unwrap();
-
         let stats = storage.get_torrent_stats(&info_hash).await.unwrap();
+
         assert!(stats.is_none());
     }
 
@@ -310,10 +414,12 @@ mod tests {
         let storage = create_storage().await;
 
         let info_hash: InfoHash = INFOHASH_A.parse().unwrap();
-        assert!(storage.swarms.read().await.get_swarm(&info_hash).is_ok());
+        let shard = storage.get_shard(&info_hash);
+        assert!(shard.swarms.read().await.get_swarm(&info_hash).is_ok());
 
         let info_hash: InfoHash = INFOHASH_B.parse().unwrap();
-        assert!(storage.swarms.read().await.get_swarm(&info_hash).is_err());
+        let shard = storage.get_shard(&info_hash);
+        assert!(shard.swarms.read().await.get_swarm(&info_hash).is_err());
     }
 
     #[tokio::test]
@@ -321,15 +427,14 @@ mod tests {
         let storage = create_storage().await;
 
         let info_hash: InfoHash = INFOHASH_A.parse().unwrap();
-        assert!(storage
-            .swarms
-            .write()
-            .await
-            .get_mut_swarm(&info_hash)
-            .is_ok());
+        let shard = storage.get_shard(&info_hash);
+
+        assert!(shard.swarms.write().await.get_mut_swarm(&info_hash).is_ok());
 
         let info_hash: InfoHash = INFOHASH_B.parse().unwrap();
-        assert!(storage
+        let shard = storage.get_shard(&info_hash);
+
+        assert!(shard
             .swarms
             .write()
             .await
@@ -348,7 +453,7 @@ mod tests {
             .await
             .unwrap();
 
-        let swarms = storage.swarms.read().await;
+        let swarms = storage.get_shard(&info_hash).swarms.read().await;
         let swarm = swarms.get_swarm(&info_hash).unwrap();
 
         assert!(swarm.get_leechers().contains_key(&peer_id_key));
@@ -366,7 +471,7 @@ mod tests {
             .unwrap();
 
         {
-            let swarms = storage.swarms.read().await;
+            let swarms = storage.get_shard(&info_hash).swarms.read().await;
             let swarm = swarms.get_swarm(&info_hash).unwrap();
             assert!(swarm.get_leechers().contains_key(&peer_id_key));
         }
@@ -377,7 +482,7 @@ mod tests {
             .unwrap();
 
         {
-            let swarms = storage.swarms.read().await;
+            let swarms = storage.get_shard(&info_hash).swarms.read().await;
             let swarm = swarms.get_swarm(&info_hash).unwrap();
             assert!(swarm.get_seeders().contains_key(&peer_id_key));
         }

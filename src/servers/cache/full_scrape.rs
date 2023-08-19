@@ -88,7 +88,7 @@ impl FullScrapeProcessor for FullScrapeResponse {
 
 impl Processor<TorrentStatsDict> for FullScrapeResponse {
     fn process(&mut self, input: &TorrentStatsDict) -> bool {
-        self.bencode(input.iter());
-        return false;
+        self.bencode(input.iter().map(|(k, v)| (k.as_ref(), v)));
+        return true;
     }
 }

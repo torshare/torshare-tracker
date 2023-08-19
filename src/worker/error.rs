@@ -2,6 +2,7 @@ use std::error::Error as StdError;
 use std::fmt;
 
 use super::TaskPacket;
+use crate::storage;
 use tokio::sync::{mpsc, oneshot};
 
 type Cause = Box<dyn StdError + Send + Sync>;
@@ -21,6 +22,7 @@ enum Kind {
     Send,
     Recv,
     TooManyRequests,
+    Storage,
     Custom(String),
 }
 
@@ -48,12 +50,7 @@ impl From<oneshot::error::RecvError> for Error {
 
 impl From<&str> for Error {
     fn from(err: &str) -> Self {
-        Self {
-            inner: Box::new(ErrorImpl {
-                kind: Kind::Custom(err.to_string()),
-                cause: None,
-            }),
-        }
+        err.to_string().into()
     }
 }
 
@@ -63,6 +60,17 @@ impl From<String> for Error {
             inner: Box::new(ErrorImpl {
                 kind: Kind::Custom(err),
                 cause: None,
+            }),
+        }
+    }
+}
+
+impl From<storage::Error> for Error {
+    fn from(value: storage::Error) -> Self {
+        Self {
+            inner: Box::new(ErrorImpl {
+                kind: Kind::Storage,
+                cause: Some(Box::new(value)),
             }),
         }
     }
@@ -79,6 +87,7 @@ impl Error {
             Kind::Send => "failed to send message to task handler",
             Kind::Recv => "failed to receive message from worker",
             Kind::TooManyRequests => "too many requests",
+            Kind::Storage => "storage error",
             Kind::Custom(ref str) => str,
         }
     }

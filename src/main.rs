@@ -1,6 +1,6 @@
 use log::{info, LevelFilter};
 use std::str::FromStr;
-use ts_tracker::{app, config::TSConfig, signals::global_shutdown_signal, storage::RedisStorage};
+use ts_tracker::{app, config::TSConfig, signals::global_shutdown_signal};
 
 #[cfg(feature = "memalloc")]
 #[global_allocator]
@@ -10,12 +10,6 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 async fn main() {
     let config = TSConfig::new().expect("failed to load config");
     setup_logger(&config.log_level);
-
-    let redis_store = RedisStorage::new(config.storage.redis.clone().unwrap());
-    let _ = redis_store
-        .get_connection()
-        .await
-        .expect("failed to connect to redis");
 
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let jobs = app::start(config, stop_rx);

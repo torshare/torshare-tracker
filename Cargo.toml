@@ -18,7 +18,6 @@ repository = "https://github.com/torshare/torshare-tracker"
 ts-utils = { path = "libs/utils" }
 
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1"
 config = "0.13"
 tokio = { version = "1", features = ["full"] }
 log = "0.4"
@@ -31,7 +30,7 @@ http-body-util = "0.1.0-rc.3"
 hyper-util = { git = "https://github.com/hyperium/hyper-util.git" }
 ahash = "0.8"
 async-trait = "0.1"
-redis = { version = "0.23", features = ["ahash", "tokio-comp"], optional = true }
+redis = { version = "0.23", features = ["ahash", "tokio-comp", "keep-alive"], optional = true }
 socket2 = { version = "0.5.3", features = ["all"] }
 indexmap = { version = "2", features = ["serde"] }
 pin-project-lite = "0.2"
@@ -59,6 +58,6 @@ debug = true
 lto = "thin"
 
 [features]
-default = ["redis-store", "memalloc"]
+default = []
 redis-store = ["redis"]
 memalloc = ["mimalloc"]

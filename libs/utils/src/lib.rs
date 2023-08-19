@@ -3,6 +3,7 @@ pub mod hex;
 pub mod number;
 pub mod query;
 pub mod serde;
+pub mod shared;
 pub mod string;
 
 mod itoa;

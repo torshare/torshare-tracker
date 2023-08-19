@@ -21,6 +21,6 @@ pub(super) trait TaskExecutor: Send + Sync {
 
 #[derive(Clone)]
 pub struct State {
-    pub storage: Arc<Box<dyn Storage>>,
+    pub storage: Arc<dyn Storage>,
     pub config: Arc<TSConfig>,
 }

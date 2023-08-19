@@ -1229,7 +1229,6 @@ dependencies = [
  "pin-project-lite",
  "redis",
  "serde",
- "serde_json",
  "socket2 0.5.3",
  "tokio",
  "ts-utils",

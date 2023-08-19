@@ -2,6 +2,7 @@ use ahash::RandomState;
 use bytes::BytesMut;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use ts_utils::shared::Shared;
 
 use super::{
     common::{InfoHash, PeerId, PEER_ID_LENGTH},
@@ -69,17 +70,16 @@ impl TorrentSwarm {
         self.partial_seeds.len()
     }
 
-    pub fn insert_peer(&mut self, key: PeerIdKey, value: Peer, peer_type: PeerType) {
+    pub fn insert_peer(
+        &mut self,
+        key: PeerIdKey,
+        value: Peer,
+        peer_type: PeerType,
+    ) -> Option<Peer> {
         match peer_type {
-            PeerType::Leecher => {
-                self.leechers.insert(key, value);
-            }
-            PeerType::Seeder => {
-                self.seeders.insert(key, value);
-            }
-            PeerType::Partial => {
-                self.partial_seeds.insert(key, value);
-            }
+            PeerType::Leecher => self.leechers.insert(key, value),
+            PeerType::Seeder => self.seeders.insert(key, value),
+            PeerType::Partial => self.partial_seeds.insert(key, value),
         }
     }
 
@@ -109,17 +109,28 @@ impl TorrentSwarm {
         }
     }
 
-    pub fn promote_peer(&mut self, key: &PeerIdKey, new_peer: Peer) {
+    pub fn promote_peer(&mut self, key: &PeerIdKey, new_peer: Peer) -> bool {
         if let Some(mut peer) = self.remove_peer(key, PeerType::Leecher) {
             update_peer_fields!(&mut peer, new_peer);
             self.insert_peer(key.clone(), peer, PeerType::Seeder);
+            return true;
         }
+
+        false
     }
 
-    pub fn update_or_insert_peer(&mut self, key: &PeerIdKey, new_peer: Peer, peer_type: PeerType) {
+    pub fn update_or_insert_peer(
+        &mut self,
+        key: &PeerIdKey,
+        new_peer: Peer,
+        peer_type: PeerType,
+    ) -> bool {
         match self.get_mut_peer(&key, peer_type) {
-            Some(peer) => update_peer_fields!(peer, new_peer),
-            None => self.insert_peer(key.clone(), new_peer, peer_type),
+            Some(peer) => {
+                update_peer_fields!(peer, new_peer);
+                false
+            }
+            None => self.insert_peer(key.clone(), new_peer, peer_type).is_none(),
         }
     }
 
@@ -168,11 +179,6 @@ impl TorrentStats {
     pub fn incr_completed(&mut self) {
         self.completed += 1;
     }
-
-    pub fn update(&mut self, swarm: &TorrentSwarm) {
-        self.seeders = swarm.seeders_count() as u32;
-        self.leechers = swarm.leechers_count() as u32;
-    }
 }
 
 /// Represents a unique identifier for a peer in a collection of peers.
@@ -211,5 +217,5 @@ impl AsRef<[u8]> for PeerIdKey {
     }
 }
 
-pub type TorrentSwarmDict = IndexMap<InfoHash, TorrentSwarm, RandomState>;
-pub type TorrentStatsDict = IndexMap<InfoHash, TorrentStats, RandomState>;
+pub type TorrentSwarmDict = IndexMap<Shared<InfoHash>, TorrentSwarm, RandomState>;
+pub type TorrentStatsDict = IndexMap<Shared<InfoHash>, TorrentStats, RandomState>;

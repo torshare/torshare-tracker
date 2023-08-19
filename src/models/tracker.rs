@@ -235,14 +235,21 @@ pub struct FullScrapeResponse {
 
 impl FullScrapeResponse {
     pub fn new() -> Self {
-        Self {
-            ser: Some(bencode::Serializer::new()),
-        }
+        let mut ser = bencode::Serializer::new();
+        ser.start_dict();
+        bencode_str!(ser, constants::TRACKER_RESPONSE_FILES);
+        ser.start_dict();
+
+        Self { ser: Some(ser) }
     }
 
     pub fn output(&mut self) -> Option<bytes::Bytes> {
         match self.ser.take() {
-            Some(serializer) => Some(serializer.finalize()),
+            Some(mut serializer) => {
+                serializer.end_dict();
+                serializer.end_dict();
+                Some(serializer.finalize())
+            }
             None => None,
         }
     }
@@ -252,16 +259,9 @@ impl FullScrapeResponse {
         T: Iterator<Item = (&'a InfoHash, &'a TorrentStats)>,
     {
         if let Some(ref mut serializer) = self.ser {
-            serializer.start_dict();
-            bencode_str!(serializer, constants::TRACKER_RESPONSE_FILES);
-            serializer.start_dict();
-
             for (info_hash, stats) in files {
                 bencode_file(serializer, info_hash, stats);
             }
-
-            serializer.end_dict();
-            serializer.end_dict();
         }
     }
 }
