@@ -1,0 +1,11 @@
+[package]
+name = "ts-pool"
+license-file.workspace = true
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt", "sync", "time"] }

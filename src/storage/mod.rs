@@ -84,6 +84,7 @@ pub fn create_new_storage(config: &crate::config::TSConfig) -> Result<Box<dyn St
             let redis_config = config.storage.redis.clone().unwrap();
             Ok(Box::new(RedisStorage::new(redis_config)))
         }
+        #[cfg(not(feature = "redis-store"))]
         _ => Err("Unsupported storage type".into()),
     }
 }

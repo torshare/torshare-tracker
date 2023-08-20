@@ -692,15 +692,26 @@ fn _encode<T: ser::Serialize>(b: &T, mut ser: Serializer) -> Result<Bytes> {
     Ok(ser.finalize())
 }
 
+/// A trait for types that can be serialized into the Bencode format.
+/// Implementors of this trait must also implement the standard `Serialize` trait
+/// provided by the `serde` crate.
 pub trait Bencode: Serialize {
+    /// Determines whether the data needs to be sorted before serialization.
+    /// By default, this method returns `true`.
     fn requires_sort(&self) -> bool {
         true
     }
 
+    /// Estimates the capacity needed for serializing the data.
     fn capacity(&self) -> usize {
         0
     }
 
+    /// Serializes the implementor into Bencode format.
+    ///
+    /// Returns:
+    /// A `Result` containing the serialized data as `Bytes`, or an error if
+    /// serialization fails.
     fn bencode(&self) -> Result<Bytes> {
         let mut serializer = Serializer::with_capacity(self.capacity() * 2);
         serializer.is_sorted = self.requires_sort() == false;

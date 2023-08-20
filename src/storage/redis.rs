@@ -1,6 +1,11 @@
+use std::{ops::DerefMut, time::Duration};
+
 use async_trait::async_trait;
 use bytes::BytesMut;
-use redis::{cmd, AsyncCommands, FromRedisValue, RedisResult, ToRedisArgs, Value};
+use redis::{
+    cmd, AsyncCommands, FromRedisValue, IntoConnectionInfo, RedisResult, ToRedisArgs, Value,
+};
+use ts_pool::{ManageConnection, Pool, PooledConnection};
 
 use super::{Processor, Result, Storage};
 use crate::{
@@ -14,25 +19,33 @@ use crate::{
 
 #[derive(Debug)]
 pub struct RedisStorage {
-    client: redis::Client,
+    pool: Pool<RedisConnectionManager>,
 }
 
 impl RedisStorage {
     pub fn new(config: RedisStorageConfig) -> Self {
-        let client = redis::Client::open(config.url).expect("Invalid connection URL");
-        Self { client }
+        let manager = RedisConnectionManager::new(config.url);
+        let pool = Pool::builder()
+            .max_size(1024)
+            .idle_timeout(Duration::from_secs(10))
+            .reaper_rate(Duration::from_secs(10))
+            .test_on_check_out(false)
+            .build(manager)
+            .expect("Failed to create redis pool");
+
+        Self { pool }
     }
 
-    pub async fn get_connection(&self) -> RedisResult<redis::aio::Connection> {
-        self.client.get_async_connection().await
+    pub async fn get_connection(
+        &self,
+    ) -> RedisResult<PooledConnection<'_, RedisConnectionManager>> {
+        match self.pool.get().await {
+            Ok(Some(conn)) => Ok(conn),
+            Ok(None) => Err((redis::ErrorKind::IoError, "failed to get connection").into()),
+            Err(err) => Err(err.into()),
+        }
     }
 }
-
-// let _: () = redis::cmd("SET")
-//     .arg("foo")
-//     .arg(42)
-//     .query_async(&mut conn)
-//     .await?;
 
 #[async_trait]
 impl Storage for RedisStorage {
@@ -42,10 +55,11 @@ impl Storage for RedisStorage {
         torrent: Option<TorrentStats>,
     ) -> Result<()> {
         let mut conn = self.get_connection().await?;
+
         let _ = cmd("HMSET")
             .arg(info_hash)
             .arg(torrent.unwrap_or_default())
-            .query_async(&mut conn)
+            .query_async(conn.deref_mut())
             .await?;
 
         Ok(())
@@ -74,7 +88,7 @@ impl Storage for RedisStorage {
             pipe.hgetall(info_hash);
         }
 
-        let results: Vec<TorrentStats> = pipe.query_async(&mut conn).await?;
+        let results: Vec<TorrentStats> = pipe.query_async(conn.deref_mut()).await?;
 
         Ok(info_hashes
             .into_iter()
@@ -120,7 +134,7 @@ impl Storage for RedisStorage {
 
     async fn extract_peers_from_swarm(
         &self,
-        info_hash: &InfoHash,
+        _info_hash: &InfoHash,
         _peer_type: PeerType,
         _processor: &mut dyn Processor<PeerDict>,
     ) -> Result<()> {
@@ -143,7 +157,7 @@ impl From<redis::RedisError> for super::Error {
     }
 }
 
-const TORRENT_KEY_PREFIX: &[u8] = b"t_";
+const TORRENT_KEY_PREFIX: &[u8] = b"ts_";
 const TORRENT_KEY_LEN: usize = TORRENT_KEY_PREFIX.len() + INFOHASH_LENGTH * 2;
 
 impl ToRedisArgs for InfoHash {
@@ -220,5 +234,39 @@ impl FromRedisValue for TorrentStats {
             }
             _ => Err((redis::ErrorKind::TypeError, "Unexpected type").into()),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RedisConnectionManager {
+    client: redis::Client,
+}
+
+impl RedisConnectionManager {
+    pub fn new<T: IntoConnectionInfo>(params: T) -> Self {
+        let client = redis::Client::open(params).expect("Invalid connection URL");
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl ManageConnection for RedisConnectionManager {
+    type Connection = redis::aio::Connection;
+    type Error = redis::RedisError;
+
+    async fn connect(&self) -> std::result::Result<Self::Connection, Self::Error> {
+        self.client.get_tokio_connection().await
+    }
+
+    async fn is_valid(&self, conn: &mut Self::Connection) -> std::result::Result<(), Self::Error> {
+        let pong: String = redis::cmd("PING").query_async(conn).await?;
+        match pong.as_str() {
+            "PONG" => Ok(()),
+            _ => Err((redis::ErrorKind::ResponseError, "ping request").into()),
+        }
+    }
+
+    fn has_broken(&self, _: &mut Self::Connection) -> bool {
+        false
     }
 }

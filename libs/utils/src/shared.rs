@@ -203,3 +203,47 @@ impl<T: ?Sized> Deref for Shared<T> {
         unsafe { &self.ptr.as_ref().data }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shared() {
+        let shared = Shared::new(1);
+        drop(shared)
+    }
+
+    #[test]
+    fn test_clone() {
+        let shared = Shared::new(1);
+        let shared2 = shared.clone();
+
+        assert_eq!(shared, shared2);
+
+        drop(shared);
+        drop(shared2);
+    }
+
+    #[test]
+    fn test_multithread() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let shared = Arc::new(Shared::new(1));
+
+        let mut threads = Vec::new();
+        for _ in 0..10 {
+            let shared = shared.clone();
+            threads.push(thread::spawn(move || {
+                assert_eq!(*shared, 1.into());
+            }));
+        }
+
+        for thread in threads {
+            thread.join().unwrap();
+        }
+
+        assert_eq!(shared.strong_count(), 1);
+    }
+}

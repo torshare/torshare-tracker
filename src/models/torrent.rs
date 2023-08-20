@@ -34,9 +34,7 @@ macro_rules! update_peer_fields {
         peer.downloaded = new_peer.downloaded;
         peer.uploaded = new_peer.uploaded;
         peer.left = new_peer.left;
-
         peer.last_announce_at = new_peer.last_announce_at;
-        peer.announce_count += 1;
 
         if new_peer.addr_v4.is_some() {
             peer.addr_v4 = new_peer.addr_v4.take();

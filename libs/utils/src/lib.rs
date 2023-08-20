@@ -12,5 +12,5 @@ pub use crate::itoa::Itoa;
 mod set;
 pub use set::Set;
 
-mod map;
-pub use map::MultiMap;
+mod multi_map;
+pub use multi_map::MultiMap;

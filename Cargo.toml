@@ -16,6 +16,7 @@ repository = "https://github.com/torshare/torshare-tracker"
 
 [dependencies]
 ts-utils = { path = "libs/utils" }
+ts-pool = { path = "libs/pool" }
 
 serde = { version = "1.0", features = ["derive"] }
 config = "0.13"
@@ -40,7 +41,8 @@ mimalloc = { version = "0.1", default-features = false, optional = true }
 
 [workspace]
 members = [
-    "libs/utils"
+    "libs/utils",
+    "libs/pool"
 ]
 
 [profile.release]
@@ -58,6 +60,6 @@ debug = true
 lto = "thin"
 
 [features]
-default = []
+default = ["redis-store"]
 redis-store = ["redis"]
 memalloc = ["mimalloc"]

@@ -43,9 +43,6 @@ pub struct Peer {
 
     /// The last time when the peer announced itself.
     pub last_announce_at: UnixEpochSecs,
-
-    /// The number of times the peer has announced itself.
-    pub announce_count: u32,
 }
 
 impl Peer {
@@ -85,7 +82,6 @@ impl TryFrom<(&AnnounceRequest, IpAddr)> for Peer {
         let downloaded = req.downloaded;
         let left = req.left;
         let last_announce_at = now();
-        let announce_count = 0;
 
         let (addr_v4, addr_v6) = match ip {
             IpAddr::V4(ip) => (Some((ip, req.port).into()), None),
@@ -101,7 +97,6 @@ impl TryFrom<(&AnnounceRequest, IpAddr)> for Peer {
             downloaded,
             left,
             last_announce_at,
-            announce_count,
         })
     }
 }
