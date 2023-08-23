@@ -1,13 +1,14 @@
 use super::{
-    common::{IpType, NumOfBytes, Port, UnixEpochSecs},
+    common::{IpType, Port},
     tracker::AnnounceRequest,
 };
-use crate::utils::now;
+use crate::config::TrackerConfig;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
+use ts_utils::time::{Clock, Duration};
 
 /// An enumeration representing the type of a peer in a BitTorrent swarm.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -24,80 +25,32 @@ pub enum PeerType {
 }
 
 /// Represents a peer in a BitTorrent swarm.
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Peer {
-    /// The IPv4 address of the peer.
-    pub addr_v4: Option<PeerAddr>,
+    /// The address of the peer.
+    pub addr: PeerAddr,
 
-    /// The IPv6 address of the peer.
-    pub addr_v6: Option<PeerAddr>,
-
-    /// The number of bytes the peer has uploaded.
-    pub uploaded: NumOfBytes,
-
-    /// The number of bytes the peer has downloaded.
-    pub downloaded: NumOfBytes,
-
-    /// The number of bytes that are left to download.
-    pub left: NumOfBytes,
-
-    /// The last time when the peer announced itself.
-    pub last_announce_at: UnixEpochSecs,
+    /// The duration since unix epoch at which the peer will expire.
+    pub expire_at: Duration,
 }
 
 impl Peer {
-    pub fn is_ipv4(&self) -> bool {
-        self.addr_v4.is_some()
-    }
-
-    pub fn is_ipv6(&self) -> bool {
-        self.addr_v6.is_some()
-    }
-
-    pub fn addr_as_bytes(&self, ip_type: IpType) -> Option<&[u8]> {
-        match ip_type {
-            IpType::V4 => {
-                if let Some(ref addr) = self.addr_v4 {
-                    return Some(addr.as_bytes());
-                }
-            }
-            IpType::V6 => {
-                if let Some(ref addr) = self.addr_v6 {
-                    return Some(addr.as_bytes());
-                }
-            }
-        };
-
-        None
+    pub fn ip_type(&self) -> IpType {
+        self.addr.ip_type()
     }
 }
 
-impl TryFrom<(&AnnounceRequest, IpAddr)> for Peer {
-    type Error = String;
+impl From<(&AnnounceRequest, IpAddr, &TrackerConfig)> for Peer {
+    fn from(value: (&AnnounceRequest, IpAddr, &TrackerConfig)) -> Self {
+        let (req, ip, config) = value;
+        let expire_at = Clock::now_since_epoch() + Duration::from(config.peer_idle_time);
 
-    fn try_from(value: (&AnnounceRequest, IpAddr)) -> Result<Self, Self::Error> {
-        let (req, ip) = value;
-
-        let uploaded = req.uploaded;
-        let downloaded = req.downloaded;
-        let left = req.left;
-        let last_announce_at = now();
-
-        let (addr_v4, addr_v6) = match ip {
-            IpAddr::V4(ip) => (Some((ip, req.port).into()), None),
-            IpAddr::V6(ip) => (None, Some((ip, req.port).into())),
+        let addr = match ip {
+            IpAddr::V4(ip) => (ip, req.port).into(),
+            IpAddr::V6(ip) => (ip, req.port).into(),
         };
 
-        debug_assert!(addr_v4.is_some() || addr_v6.is_some());
-
-        Ok(Peer {
-            addr_v4,
-            addr_v6,
-            uploaded,
-            downloaded,
-            left,
-            last_announce_at,
-        })
+        Self { addr, expire_at }
     }
 }
 
@@ -112,18 +65,18 @@ pub const PORT_LENGTH: usize = 2;
 pub enum PeerAddr {
     /// Represents an IPv4 address of a peer. It contains an array of `u8` with a length of `PEER_ADDR_V4_LENGTH`,
     /// which typically represents the IPv4 address in octets (4 bytes) and an additional 2 bytes for the port number.
-    V4([u8; PEER_ADDR_V4_LENGTH]),
+    V4(PeerAddrV4),
 
     /// Represents an IPv6 address of a peer. It contains an array of `u8` with a length of `PEER_ADDR_V6_LENGTH`,
     /// which typically represents the IPv6 address in octets (16 bytes) and an additional 2 bytes for the port number.
-    V6([u8; PEER_ADDR_V6_LENGTH]),
+    V6(PeerAddrV6),
 }
 
 impl PeerAddr {
     pub fn as_bytes(&self) -> &[u8] {
         match self {
-            PeerAddr::V4(bytes) => bytes,
-            PeerAddr::V6(bytes) => bytes,
+            PeerAddr::V4(addr) => addr.as_ref(),
+            PeerAddr::V6(addr) => addr.as_ref(),
         }
     }
 
@@ -136,7 +89,7 @@ impl PeerAddr {
 }
 
 macro_rules! impl_ip_port_into_peer_addr {
-    ($ip:ty, $into:ident, $length:expr, $ip_length:expr) => {
+    ($ip:ty, $into:ident, $type:expr, $length:expr, $ip_length:expr) => {
         impl From<($ip, Port)> for PeerAddr {
             fn from(value: ($ip, Port)) -> Self {
                 let (ip, port) = value;
@@ -144,14 +97,14 @@ macro_rules! impl_ip_port_into_peer_addr {
 
                 bytes[..$ip_length].copy_from_slice(&ip.octets());
                 bytes[$ip_length..].copy_from_slice(&port.0.to_be_bytes());
-                PeerAddr::$into(bytes)
+                PeerAddr::$into($type(bytes))
             }
         }
     };
 }
 
-impl_ip_port_into_peer_addr!(Ipv4Addr, V4, PEER_ADDR_V4_LENGTH, IP_V4_LENGTH);
-impl_ip_port_into_peer_addr!(Ipv6Addr, V6, PEER_ADDR_V6_LENGTH, IP_V6_LENGTH);
+impl_ip_port_into_peer_addr!(Ipv4Addr, V4, PeerAddrV4, PEER_ADDR_V4_LENGTH, IP_V4_LENGTH);
+impl_ip_port_into_peer_addr!(Ipv6Addr, V6, PeerAddrV6, PEER_ADDR_V6_LENGTH, IP_V6_LENGTH);
 
 macro_rules! extract_ip_port {
     ($ip_type:expr, $ip_conv:ty, $ip_length:expr, $bytes:expr) => {
@@ -206,8 +159,8 @@ impl<'de> Deserialize<'de> for PeerAddr {
     {
         let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
         match bytes.len() {
-            PEER_ADDR_V4_LENGTH => Ok(PeerAddr::V4(bytes.try_into().unwrap())),
-            PEER_ADDR_V6_LENGTH => Ok(PeerAddr::V6(bytes.try_into().unwrap())),
+            PEER_ADDR_V4_LENGTH => Ok(PeerAddr::V4(PeerAddrV4(bytes.try_into().unwrap()))),
+            PEER_ADDR_V6_LENGTH => Ok(PeerAddr::V6(PeerAddrV6(bytes.try_into().unwrap()))),
             _ => Err(serde::de::Error::custom(format!(
                 "invalid peer address length: {}",
                 bytes.len()
@@ -222,5 +175,25 @@ impl Serialize for PeerAddr {
         S: serde::Serializer,
     {
         serializer.serialize_bytes(self.as_bytes())
+    }
+}
+
+#[derive(PartialEq, Eq, Clone)]
+pub struct PeerAddrV4([u8; PEER_ADDR_V4_LENGTH]);
+
+impl std::ops::Deref for PeerAddrV4 {
+    type Target = [u8; PEER_ADDR_V4_LENGTH];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(PartialEq, Eq, Clone)]
+pub struct PeerAddrV6([u8; PEER_ADDR_V6_LENGTH]);
+
+impl std::ops::Deref for PeerAddrV6 {
+    type Target = [u8; PEER_ADDR_V6_LENGTH];
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }

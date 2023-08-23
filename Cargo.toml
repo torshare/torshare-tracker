@@ -34,7 +34,6 @@ async-trait = "0.1"
 redis = { version = "0.23", features = ["ahash", "tokio-comp", "keep-alive"], optional = true }
 socket2 = { version = "0.5.3", features = ["all"] }
 indexmap = { version = "2", features = ["serde"] }
-pin-project-lite = "0.2"
 mimalloc = { version = "0.1", default-features = false, optional = true }
 
 [dev-dependencies]
@@ -47,17 +46,23 @@ members = [
 
 [profile.release]
 debug = false
-opt-level = 3
 lto = "fat"
 codegen-units = 1
-
-[profile.bench]
-inherits = "release-debug"
 
 [profile.release-debug]
 inherits = "release"
 debug = true
 lto = "thin"
+codegen-units = 16
+
+[profile.release-minsize]
+inherits = "release"
+strip = true
+opt-level = "s"
+panic = "abort"
+
+[profile.bench]
+inherits = "release-debug"
 
 [features]
 default = ["redis-store"]

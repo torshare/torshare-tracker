@@ -1,6 +1,7 @@
+use std::time::Duration;
+
 use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use ts_utils::{
     serde::{deserialize_header_name, deserialize_option_string, deserialize_secs_to_duration},
     Set,
@@ -18,11 +19,19 @@ pub enum StorageType {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct MemoryStorageConfig {}
+pub struct MemoryStorageConfig {
+    /// The number of shards to use for the in-memory storage.
+    pub shard_count: u16,
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RedisStorageConfig {
+    /// The URL of the Redis server.
     pub url: String,
+    /// The minimum number of idle connections to keep open with the Redis server.
+    pub min_idle_connections: u32,
+    /// The maximum number of connections that the application can establish with the Redis server.
+    pub max_connections: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -112,6 +121,16 @@ pub struct TrackerConfig {
     /// The interval at which clients should scrape the tracker for information.
     pub scrape_interval: u32,
 
+    /// The maximum number of peers to include in a response to an announce request.
+    pub max_numwant: u32,
+
+    /// The default number of peers to include in a response to an announce request.
+    pub default_numwant: u32,
+
+    /// The period, measured in seconds since the last announce request, for considering a peer as active.
+    #[serde(deserialize_with = "deserialize_secs_to_duration")]
+    pub peer_idle_time: Duration,
+
     /// Determines whether a full scrape is allowed.
     pub allow_full_scrape: bool,
 
@@ -121,12 +140,6 @@ pub struct TrackerConfig {
 
     /// The maximum number of torrents to scrape in a single request.
     pub max_multi_scrape_count: u32,
-
-    /// The maximum number of peers to include in a response to an announce request.
-    pub max_numwant: u32,
-
-    /// The default number of peers to include in a response to an announce request.
-    pub default_numwant: u32,
 
     /// Determines whether UDP announce requests are allowed.
     pub allow_udp_announce: bool,

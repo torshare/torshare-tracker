@@ -10,12 +10,12 @@ use socket2::{Protocol, Socket};
 use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::{
     net::TcpListener,
     sync::{mpsc, Semaphore},
-    time::sleep_until,
+    time::{sleep_until, Instant},
 };
 
 use self::handler::Handler;
@@ -148,7 +148,8 @@ async fn accept_loop(
 
 async fn create_request_timer(timeout_duration: Duration, mut reset_timer_rx: mpsc::Receiver<()>) {
     let deadline = Instant::now() + timeout_duration;
-    let timeout_fut = sleep_until(deadline.into());
+    let timeout_fut = sleep_until(deadline);
+
     tokio::pin!(timeout_fut);
 
     loop {
@@ -156,7 +157,7 @@ async fn create_request_timer(timeout_duration: Duration, mut reset_timer_rx: mp
             res = reset_timer_rx.recv() => match res {
                 Some(_) => {
                     let deadline = Instant::now() + timeout_duration;
-                    timeout_fut.as_mut().reset(deadline.into());
+                    timeout_fut.as_mut().reset(deadline);
                 },
                 None => {},
             },

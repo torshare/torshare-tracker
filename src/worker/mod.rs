@@ -23,16 +23,16 @@ const WORKER_POOL_SIZE: usize = 10_000;
 impl Worker {
     /// Create a new `Worker`.
     pub fn new(config: Arc<TSConfig>) -> Worker {
-        let storage = create_new_storage(&config)
+        let storage = create_new_storage(config.clone())
             .expect("Failed to create storage")
             .into();
 
         let (sender, receiver) = mpsc::channel::<TaskPacket>(WORKER_POOL_SIZE);
-
+        let state = State { storage, config };
         Self {
             sender,
             receiver: Some(receiver),
-            state: Some(State { storage, config }),
+            state: Some(state),
         }
     }
 

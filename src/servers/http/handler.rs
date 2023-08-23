@@ -1,6 +1,7 @@
 use super::error::HttpError;
 use super::response::{Body, BodyStream, HttpResponse};
 use crate::constants;
+use crate::models::common::IpType;
 use crate::models::tracker::{
     AnnounceRequest, AnnounceResponse, ScrapeRequest, ScrapeResponse, TrackerError,
 };
@@ -78,7 +79,7 @@ impl Handler {
                 debug!("announce failed: {:?}", err);
                 convert_to_tracker_response(err)
             }),
-            (&Method::GET, "/scrape") => scrape(req, state).await.or_else(|err| {
+            (&Method::GET, "/scrape") => scrape(req, state, addr).await.or_else(|err| {
                 debug!("scrape failed: {:?}", err);
                 convert_to_tracker_response(err)
             }),
@@ -118,19 +119,27 @@ async fn announce(
     HttpResponse::try_from(response)
 }
 
-async fn scrape(req: HttpRequest<IncomingBody>, state: State) -> Result<HttpResponse, HttpError> {
+async fn scrape(
+    req: HttpRequest<IncomingBody>,
+    state: State,
+    addr: SocketAddr,
+) -> Result<HttpResponse, HttpError> {
     if !state.config.allow_http_scrape() {
         let err: TrackerError = constants::TRACKER_ERROR_HTTP_SCRAPE_NOT_ALLOWED.into();
         return HttpResponse::try_from(err);
     }
 
     let request: ScrapeRequest = req.query_params()?;
+    let ip_type = match addr.ip() {
+        std::net::IpAddr::V4(_) => IpType::V4,
+        std::net::IpAddr::V6(_) => IpType::V6,
+    };
 
     if request.info_hashes.is_empty() {
         return full_scrape(state).await;
     }
 
-    let task = Task::Scrape(request);
+    let task = Task::Scrape((request, ip_type));
     let response: ScrapeResponse = state.worker.work(task).await?.into();
 
     HttpResponse::try_from(response)
@@ -147,7 +156,7 @@ async fn full_scrape(state: State) -> Result<HttpResponse, HttpError> {
 
     if is_cache_expired && !cache.is_refreshing() {
         let state = state.clone();
-        let expires_in = state.config.full_scrape_cache_ttl();
+        let expires_in = state.config.full_scrape_cache_ttl().into();
 
         tokio::spawn(async move {
             full_scrape::refresh(state.cache, state.worker, expires_in).await;

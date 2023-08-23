@@ -123,11 +123,11 @@ fn default_no_peer_id() -> bool {
 pub struct AnnounceResponse {
     /// The number of peers with the entire file, aka "seeders".
     #[serde(rename = "complete")]
-    pub seeders: u32,
+    pub complete: u32,
 
     /// The number of non-seeder peers, aka "leechers".
     #[serde(rename = "incomplete")]
-    pub leechers: u32,
+    pub incomplete: u32,
 
     /// Interval in seconds that the client should wait between sending regular requests to the tracker.
     pub interval: IntervalDuration,
@@ -223,7 +223,7 @@ fn bencode_file(serializer: &mut bencode::Serializer, info_hash: &InfoHash, stat
         serializer,
         constants::TRACKER_RESPONSE_COMPLETE => bencode_int!(serializer, stats.seeders),
         constants::TRACKER_RESPONSE_DOWNLOADED => bencode_int!(serializer, stats.completed),
-        constants::TRACKER_RESPONSE_INCOMPLETE => bencode_int!(serializer, stats.leechers)
+        constants::TRACKER_RESPONSE_INCOMPLETE => bencode_int!(serializer, stats.incomplete)
     );
 }
 
@@ -256,7 +256,7 @@ impl FullScrapeResponse {
 
     pub fn bencode<'a, T>(&mut self, files: T)
     where
-        T: Iterator<Item = (&'a InfoHash, &'a TorrentStats)>,
+        T: Iterator<Item = &'a (InfoHash, TorrentStats)>,
     {
         if let Some(ref mut serializer) = self.ser {
             for (info_hash, stats) in files {

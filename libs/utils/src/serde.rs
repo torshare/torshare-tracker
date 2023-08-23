@@ -1,8 +1,7 @@
-use std::time::Duration;
-
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serializer;
+use std::time::Duration;
 
 /// Custom deserialization function for converting a boolean to an integer
 pub fn deserialize_u8_to_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
@@ -64,6 +63,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use serde::Serialize;
     use serde_test::{assert_de_tokens, assert_ser_tokens, Token};

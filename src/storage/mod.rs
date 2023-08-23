@@ -1,10 +1,13 @@
-use crate::config::StorageType;
-use crate::models::common::InfoHash;
+use crate::config::{StorageType, TSConfig};
+use crate::models::common::{InfoHash, IpType};
 use crate::models::peer::{Peer, PeerType};
-use crate::models::torrent::{PeerDict, PeerIdKey, TorrentStats, TorrentStatsDict};
+use crate::models::torrent::{
+    PeerDict, PeerIdKey, SwarmStats, Torrent, TorrentStats, TorrentStatsList,
+};
 use async_trait::async_trait;
 use std::error::Error as StdError;
 use std::fmt;
+use std::sync::Arc;
 
 mod memory;
 pub use self::memory::MemoryStorage;
@@ -17,28 +20,33 @@ pub use self::redis::RedisStorage;
 
 #[async_trait]
 pub trait Storage: Sync + Send {
-    async fn insert_torrent(&self, info_hash: &InfoHash, stats: Option<TorrentStats>)
-        -> Result<()>;
+    async fn insert_torrent(&self, info_hash: &InfoHash, stats: Option<Torrent>) -> Result<()>;
 
     async fn remove_torrent(&mut self, info_hash: &InfoHash) -> Result<()>;
+
     async fn has_torrent(&self, info_hash: &InfoHash) -> Result<bool>;
 
-    async fn get_torrent_stats(&self, info_hash: &InfoHash) -> Result<Option<TorrentStats>>;
+    async fn get_torrent_stats(
+        &self,
+        info_hash: &InfoHash,
+        ip_type: IpType,
+    ) -> Result<TorrentStats>;
 
     async fn get_multi_torrent_stats(
         &self,
         info_hashes: Vec<InfoHash>,
+        ip_type: IpType,
     ) -> Result<Vec<(InfoHash, TorrentStats)>>;
 
     async fn get_all_torrent_stats(
         &self,
-        processor: &mut dyn Processor<TorrentStatsDict>,
+        processor: &mut dyn Processor<TorrentStatsList>,
     ) -> Result<()>;
 
     async fn put_peer_in_swarm(
         &self,
         info_hash: &InfoHash,
-        peer_id: &PeerIdKey,
+        peer_id_key: &PeerIdKey,
         peer: Peer,
         peer_type: PeerType,
     ) -> Result<()>;
@@ -46,7 +54,7 @@ pub trait Storage: Sync + Send {
     async fn update_or_put_peer_in_swarm(
         &self,
         info_hash: &InfoHash,
-        peer_id: &PeerIdKey,
+        peer_id_key: &PeerIdKey,
         peer: Peer,
         peer_type: PeerType,
     ) -> Result<()>;
@@ -54,7 +62,7 @@ pub trait Storage: Sync + Send {
     async fn promote_peer_in_swarm(
         &self,
         info_hash: &InfoHash,
-        peer_id: &PeerIdKey,
+        peer_id_key: &PeerIdKey,
         peer: Peer,
     ) -> Result<()>;
 
@@ -62,28 +70,32 @@ pub trait Storage: Sync + Send {
         &self,
         info_hash: &InfoHash,
         peer_type: PeerType,
+        peer_ip_type: IpType,
         processor: &mut dyn Processor<PeerDict>,
-    ) -> Result<()>;
+    ) -> Result<SwarmStats>;
 
     async fn remove_peer_from_swarm(
         &self,
         info_hash: &InfoHash,
-        peer_id: &PeerIdKey,
+        peer_id_key: &PeerIdKey,
         peer_type: PeerType,
-    ) -> Result<Option<Peer>>;
+        peer_ip_type: IpType,
+    ) -> Result<()>;
 }
 
-pub fn create_new_storage(config: &crate::config::TSConfig) -> Result<Box<dyn Storage>> {
+pub fn create_new_storage(config: Arc<TSConfig>) -> Result<Box<dyn Storage>> {
     let storage_type = config.storage.name.to_owned();
     log::info!("Storage type: {:?}", storage_type);
 
     match storage_type {
-        StorageType::Memory => Ok(Box::new(MemoryStorage::new())),
-        #[cfg(feature = "redis-store")]
-        StorageType::Redis => {
-            let redis_config = config.storage.redis.clone().unwrap();
-            Ok(Box::new(RedisStorage::new(redis_config)))
+        StorageType::Memory => {
+            let shard_count = config.storage.memory.as_ref().unwrap();
+            Ok(Box::new(MemoryStorage::with_shards(
+                shard_count.shard_count as usize,
+            )))
         }
+        #[cfg(feature = "redis-store")]
+        StorageType::Redis => Ok(Box::new(RedisStorage::new(config))),
         #[cfg(not(feature = "redis-store"))]
         _ => Err("Unsupported storage type".into()),
     }
@@ -115,14 +127,20 @@ struct ErrorImpl {
 
 #[derive(Debug)]
 enum Kind {
+    Known(&'static str),
     Custom(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl From<&str> for Error {
-    fn from(err: &str) -> Self {
-        err.to_string().into()
+impl From<&'static str> for Error {
+    fn from(err: &'static str) -> Self {
+        Self {
+            inner: Box::new(ErrorImpl {
+                kind: Kind::Known(err),
+                cause: None,
+            }),
+        }
     }
 }
 
@@ -146,6 +164,7 @@ impl Error {
     fn description(&self) -> &str {
         match self.inner.kind {
             Kind::Custom(ref msg) => msg,
+            Kind::Known(msg) => msg,
         }
     }
 }

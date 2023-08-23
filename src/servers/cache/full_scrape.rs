@@ -1,9 +1,10 @@
 use bytes::Bytes;
-use std::{sync::Arc, time::Duration, time::Instant};
+use std::sync::Arc;
+use ts_utils::time::{Duration, Instant};
 
 use super::Cache;
 use crate::{
-    models::{torrent::TorrentStatsDict, tracker::FullScrapeResponse},
+    models::{torrent::TorrentStatsList, tracker::FullScrapeResponse},
     storage::Processor,
     worker::{FullScrapeProcessor, Task, TaskOutput, Worker},
 };
@@ -77,7 +78,7 @@ impl std::ops::DerefMut for FullScrapeCache {
 }
 
 impl FullScrapeProcessor for FullScrapeResponse {
-    fn as_processor(&mut self) -> &mut dyn Processor<TorrentStatsDict> {
+    fn as_processor(&mut self) -> &mut dyn Processor<TorrentStatsList> {
         self
     }
 
@@ -86,9 +87,9 @@ impl FullScrapeProcessor for FullScrapeResponse {
     }
 }
 
-impl Processor<TorrentStatsDict> for FullScrapeResponse {
-    fn process(&mut self, input: &TorrentStatsDict) -> bool {
-        self.bencode(input.iter().map(|(k, v)| (k.as_ref(), v)));
+impl Processor<TorrentStatsList> for FullScrapeResponse {
+    fn process(&mut self, input: &TorrentStatsList) -> bool {
+        self.bencode(input.iter());
         return true;
     }
 }

@@ -3,6 +3,7 @@ pub mod full_scrape;
 use self::full_scrape::FullScrapeCache;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
+use ts_utils::time::Instant;
 
 /// A cache for storing various types of data, such as full scrape responses.
 pub struct Cache {
@@ -27,7 +28,7 @@ pub struct CacheEntry<T> {
     /// The cached data stored within the entry.
     data: T,
     /// The instant at which the cached data expires (if applicable).
-    expires: Option<std::time::Instant>,
+    expires: Option<Instant>,
     /// A flag indicating whether the cached data is being refreshed.
     refreshing: AtomicBool,
 }
@@ -36,7 +37,7 @@ impl<T> CacheEntry<T>
 where
     T: Send + Sync,
 {
-    pub fn new(data: T, expires: Option<std::time::Instant>) -> CacheEntry<T> {
+    pub fn new(data: T, expires: Option<Instant>) -> CacheEntry<T> {
         CacheEntry {
             data,
             expires,
@@ -46,7 +47,7 @@ where
 
     pub fn is_expired(&self) -> bool {
         match self.expires {
-            Some(expires) => expires < std::time::Instant::now(),
+            Some(expires) => expires < Instant::now(),
             None => false,
         }
     }
@@ -59,7 +60,7 @@ where
         self.refreshing.store(true, Ordering::SeqCst);
     }
 
-    pub fn set(&mut self, data: T, expires: Option<std::time::Instant>) {
+    pub fn set(&mut self, data: T, expires: Option<Instant>) {
         debug_assert!(self.is_refreshing());
 
         self.data = data;
@@ -68,11 +69,11 @@ where
     }
 }
 
-impl<T> From<(T, std::time::Instant)> for CacheEntry<T>
+impl<T> From<(T, Instant)> for CacheEntry<T>
 where
     T: Send + Sync,
 {
-    fn from(value: (T, std::time::Instant)) -> CacheEntry<T> {
+    fn from(value: (T, Instant)) -> CacheEntry<T> {
         CacheEntry::new(value.0, Some(value.1))
     }
 }
@@ -86,6 +87,8 @@ impl<T> std::ops::Deref for CacheEntry<T> {
 
 #[cfg(test)]
 mod tests {
+    use ts_utils::time::Duration;
+
     use super::*;
 
     #[test]
@@ -93,11 +96,11 @@ mod tests {
         let mut entry = CacheEntry::new((), None);
         assert!(!entry.is_expired());
 
-        let expires = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        let expires = Instant::now() + Duration::from_secs(1);
         entry.expires = Some(expires);
         assert!(!entry.is_expired());
 
-        let expires = std::time::Instant::now() - std::time::Duration::from_secs(1);
+        let expires = Instant::now() - Duration::from_secs(1);
         entry.expires = Some(expires);
         assert!(entry.is_expired());
     }

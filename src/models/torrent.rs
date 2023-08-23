@@ -2,7 +2,6 @@ use ahash::RandomState;
 use bytes::BytesMut;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use ts_utils::shared::Shared;
 
 use super::{
     common::{InfoHash, PeerId, PEER_ID_LENGTH},
@@ -17,55 +16,40 @@ pub type PeerDict = IndexMap<PeerIdKey, Peer, RandomState>;
 #[derive(Debug, Default)]
 pub struct TorrentSwarm {
     /// A Map representing the seeders in the swarm.
-    seeders: PeerDict,
+    pub seeders: PeerDict,
 
     /// A Map representing the leechers in the swarm.
-    leechers: PeerDict,
+    pub leechers: PeerDict,
 
     /// A Map representing the partial seeders in the swarm.
-    partial_seeds: PeerDict,
+    pub partial_seeds: PeerDict,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SwarmStats {
+    pub complete: usize,
+    pub incomplete: usize,
 }
 
 macro_rules! update_peer_fields {
     ($peer:expr, $new_peer:expr) => {{
         let peer = $peer;
-        let mut new_peer = $new_peer;
+        let new_peer = $new_peer;
 
-        peer.downloaded = new_peer.downloaded;
-        peer.uploaded = new_peer.uploaded;
-        peer.left = new_peer.left;
-        peer.last_announce_at = new_peer.last_announce_at;
-
-        if new_peer.addr_v4.is_some() {
-            peer.addr_v4 = new_peer.addr_v4.take();
-        }
-
-        if new_peer.addr_v6.is_some() {
-            peer.addr_v6 = new_peer.addr_v6.take();
-        }
+        peer.addr = new_peer.addr;
+        peer.expire_at = new_peer.expire_at;
     }};
 }
 
 impl TorrentSwarm {
     /// Returns the number of seeders in the swarm.
-    pub fn seeders_count(&self) -> usize {
+    pub fn complete_count(&self) -> usize {
         self.seeders.len()
     }
 
     /// Returns the number of leechers in the swarm.
-    pub fn leechers_count(&self) -> usize {
-        self.leechers.len()
-    }
-
-    /// Returns the number of peers in the swarm.
-    /// This is the sum of the number of seeders and leechers.
-    pub fn peers_count(&self) -> usize {
-        self.seeders_count() + self.leechers_count()
-    }
-
-    /// Returns the number of partial seeders in the swarm.
-    pub fn partial_seeds_count(&self) -> usize {
-        self.partial_seeds.len()
+    pub fn incomplete_count(&self) -> usize {
+        self.leechers.len() + self.partial_seeds.len()
     }
 
     pub fn insert_peer(
@@ -107,29 +91,23 @@ impl TorrentSwarm {
         }
     }
 
-    pub fn promote_peer(&mut self, key: &PeerIdKey, new_peer: Peer) -> bool {
-        if let Some(mut peer) = self.remove_peer(key, PeerType::Leecher) {
-            update_peer_fields!(&mut peer, new_peer);
-            self.insert_peer(key.clone(), peer, PeerType::Seeder);
+    pub fn promote_peer(&mut self, key: &PeerIdKey, peer: Peer) -> bool {
+        if let Some(mut epeer) = self.remove_peer(key, PeerType::Leecher) {
+            update_peer_fields!(&mut epeer, peer);
+            self.insert_peer(key.clone(), epeer, PeerType::Seeder);
             return true;
         }
 
         false
     }
 
-    pub fn update_or_insert_peer(
-        &mut self,
-        key: &PeerIdKey,
-        new_peer: Peer,
-        peer_type: PeerType,
-    ) -> bool {
+    pub fn update_or_insert_peer(&mut self, key: &PeerIdKey, peer: Peer, peer_type: PeerType) {
         match self.get_mut_peer(&key, peer_type) {
-            Some(peer) => {
-                update_peer_fields!(peer, new_peer);
-                false
+            Some(epeer) => update_peer_fields!(epeer, peer),
+            None => {
+                let _ = self.insert_peer(key.clone(), peer, peer_type);
             }
-            None => self.insert_peer(key.clone(), new_peer, peer_type).is_none(),
-        }
+        };
     }
 
     pub fn remove_peer(&mut self, key: &PeerIdKey, peer_type: PeerType) -> Option<Peer> {
@@ -144,17 +122,16 @@ impl TorrentSwarm {
             }
         }
     }
+}
 
-    pub fn get_leechers(&self) -> &PeerDict {
-        &self.leechers
-    }
+#[derive(Debug, Default, Clone)]
+pub struct Torrent {
+    pub completed: u32,
+}
 
-    pub fn get_seeders(&self) -> &PeerDict {
-        &self.seeders
-    }
-
-    pub fn get_partial_seeds(&self) -> &PeerDict {
-        &self.partial_seeds
+impl Torrent {
+    pub fn incr_completed(&mut self) {
+        self.completed += 1;
     }
 }
 
@@ -169,15 +146,20 @@ pub struct TorrentStats {
     pub completed: u32,
 
     /// The number of non-seeder peers.
-    #[serde(rename = "incomplete")]
-    pub leechers: u32,
+    pub incomplete: u32,
 }
 
 impl TorrentStats {
-    pub fn incr_completed(&mut self) {
-        self.completed += 1;
+    pub fn new_with_completed(completed: u32) -> Self {
+        Self {
+            completed,
+            seeders: 0,
+            incomplete: 0,
+        }
     }
 }
+
+pub type TorrentStatsList = Vec<(InfoHash, TorrentStats)>;
 
 /// Represents a unique identifier for a peer in a collection of peers.
 #[derive(Debug, PartialEq, Default, Eq, Hash, Clone)]
@@ -214,6 +196,3 @@ impl AsRef<[u8]> for PeerIdKey {
         &self.0
     }
 }
-
-pub type TorrentSwarmDict = IndexMap<Shared<InfoHash>, TorrentSwarm, RandomState>;
-pub type TorrentStatsDict = IndexMap<Shared<InfoHash>, TorrentStats, RandomState>;

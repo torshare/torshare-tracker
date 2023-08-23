@@ -16,6 +16,7 @@ use crate::{
 use async_trait::async_trait;
 use bytes::BytesMut;
 use std::{net::IpAddr, ops::Range};
+use ts_utils::time::Clock;
 
 pub struct TaskExecutor;
 
@@ -46,11 +47,10 @@ impl super::TaskExecutor for TaskExecutor {
             };
         }
 
-        let peer: Peer = (&req, sender_addr).try_into()?;
-        let announce_time = peer.last_announce_at as usize;
+        let peer: Peer = (&req, sender_addr, &config.tracker).into();
 
         let mut peer_type = {
-            if peer.left == NUM_ZERO {
+            if req.left == NUM_ZERO {
                 PeerType::Seeder
             } else {
                 PeerType::Leecher
@@ -69,7 +69,7 @@ impl super::TaskExecutor for TaskExecutor {
 
             Some(AnnounceEvent::Stopped) => {
                 storage
-                    .remove_peer_from_swarm(info_hash, &peer_id_key, peer_type)
+                    .remove_peer_from_swarm(info_hash, &peer_id_key, peer_type, peer.ip_type())
                     .await?;
             }
 
@@ -100,36 +100,27 @@ impl super::TaskExecutor for TaskExecutor {
         let response = {
             let mut peers = None;
             let mut peers6 = None;
-            let mut seeders = 0;
-            let mut leechers = 0;
-            let warning_message = None;
+            let mut complete = 0;
+            let mut incomplete = 0;
 
             if req.event != Some(AnnounceEvent::Stopped) {
-                let sender_ip_type = if sender_addr.is_ipv4() {
+                let peer_ip_type = if sender_addr.is_ipv4() {
                     IpType::V4
                 } else {
                     IpType::V6
                 };
 
-                let mut processor = ResponsePeersExtractor::new(
-                    &req,
-                    &peer_id_key,
-                    sender_ip_type,
-                    announce_time,
-                    &config,
-                );
+                let mut processor =
+                    ResponsePeersExtractor::new(&req, &peer_id_key, peer_ip_type, &config);
 
-                let (stats, _) = tokio::try_join! {
-                    storage.get_torrent_stats(info_hash),
-                    storage.extract_peers_from_swarm(info_hash, peer_type, &mut processor)
-                }?;
+                let stats = storage
+                    .extract_peers_from_swarm(info_hash, peer_type, peer_ip_type, &mut processor)
+                    .await?;
 
                 (peers, peers6) = processor.into_output();
 
-                if let Some(stats) = stats {
-                    seeders = stats.seeders;
-                    leechers = stats.leechers;
-                }
+                complete = stats.complete as u32;
+                incomplete = stats.incomplete as u32;
             }
 
             let interval = config.announce_interval();
@@ -138,11 +129,11 @@ impl super::TaskExecutor for TaskExecutor {
             AnnounceResponse {
                 peers,
                 peers6,
-                leechers,
-                seeders,
-                warning_message,
+                incomplete,
+                complete,
                 interval,
                 min_interval,
+                warning_message: None,
             }
         };
 
@@ -153,19 +144,18 @@ impl super::TaskExecutor for TaskExecutor {
 struct ResponsePeersExtractor<'a> {
     req: &'a AnnounceRequest,
     peer_id_key: &'a PeerIdKey,
-    sender_ip_type: IpType,
+    peer_ip_type: IpType,
     numwant: usize,
     peers: PeersOutput,
     peer_count: usize,
-    announce_time: usize,
+    random_val: usize,
 }
 
 impl<'a> ResponsePeersExtractor<'a> {
     fn new(
         req: &'a AnnounceRequest,
         peer_id_key: &'a PeerIdKey,
-        sender_ip_type: IpType,
-        announce_time: usize,
+        peer_ip_type: IpType,
         config: &TSConfig,
     ) -> Self {
         let numwant = std::cmp::min(
@@ -173,15 +163,16 @@ impl<'a> ResponsePeersExtractor<'a> {
             config.max_numwant(),
         ) as usize;
 
-        let peers = PeersOutput::new(req.compact, numwant, sender_ip_type);
+        let peers = PeersOutput::new(req.compact, numwant, peer_ip_type);
+        let random_val = Clock::recent_since_epoch().as_secs() as usize;
 
         Self {
             numwant,
             req,
             peer_id_key,
-            sender_ip_type,
+            peer_ip_type,
             peers,
-            announce_time,
+            random_val,
             peer_count: 0,
         }
     }
@@ -196,25 +187,14 @@ impl<'a> ResponsePeersExtractor<'a> {
                 continue;
             }
 
-            if self
-                .peers
-                .insert(peer_id_key, peer, self.sender_ip_type, self.req.no_peer_id)
-            {
-                self.peer_count += 1;
-            }
+            self.peers.insert(peer_id_key, peer, self.req.no_peer_id);
+            self.peer_count += 1;
         }
 
         return true;
     }
 
-    fn predicate(&self, peer: &Peer, peer_id_key: &PeerIdKey) -> bool {
-        if !match self.sender_ip_type {
-            IpType::V4 => peer.is_ipv4(),
-            IpType::V6 => peer.is_ipv6(),
-        } {
-            return false;
-        }
-
+    fn predicate(&self, _peer: &Peer, peer_id_key: &PeerIdKey) -> bool {
         if peer_id_key == self.peer_id_key {
             return false;
         }
@@ -240,7 +220,7 @@ impl<'a> ResponsePeersExtractor<'a> {
             }
         };
 
-        match self.sender_ip_type {
+        match self.peer_ip_type {
             IpType::V4 => (peers, None),
             IpType::V6 => (None, peers),
         }
@@ -254,7 +234,7 @@ impl<'a> Processor<PeerDict> for ResponsePeersExtractor<'a> {
             return self.extract(peer_dict, 0..total_peers);
         }
 
-        let start = self.announce_time % total_peers;
+        let start = self.random_val % total_peers;
         match self.extract(peer_dict, start..total_peers) {
             true => self.extract(peer_dict, 0..start),
             false => false,
@@ -282,38 +262,21 @@ impl PeersOutput {
         }
     }
 
-    fn insert(
-        &mut self,
-        peer_id_key: &PeerIdKey,
-        peer: &Peer,
-        sender_ip_type: IpType,
-        no_peer_id: bool,
-    ) -> bool {
+    fn insert(&mut self, peer_id_key: &PeerIdKey, peer: &Peer, no_peer_id: bool) {
         match self {
             PeersOutput::Compact(peer_list) => {
-                if let Some(addr) = peer.addr_as_bytes(sender_ip_type) {
-                    peer_list.extend_from_slice(&addr);
-                    return true;
-                }
+                peer_list.extend_from_slice(peer.addr.as_bytes());
             }
 
             PeersOutput::NonCompact(peer_list) => {
-                if let Some((ip, port)) = match sender_ip_type {
-                    IpType::V4 => peer.addr_v4.as_ref().map(|addr| addr.into()),
-                    IpType::V6 => peer.addr_v6.as_ref().map(|addr| addr.into()),
-                } {
-                    let peer_id = match no_peer_id {
-                        true => None,
-                        false => peer_id_key.as_ref()[..PEER_ID_LENGTH].try_into().ok(),
-                    };
+                let (ip, port) = (&peer.addr).into();
+                let peer_id = match no_peer_id {
+                    true => None,
+                    false => peer_id_key.as_ref()[..PEER_ID_LENGTH].try_into().ok(),
+                };
 
-                    peer_list.push(NonCompactPeer { ip, port, peer_id });
-
-                    return true;
-                }
+                peer_list.push(NonCompactPeer { ip, port, peer_id });
             }
         }
-
-        return false;
     }
 }

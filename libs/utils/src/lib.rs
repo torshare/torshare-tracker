@@ -5,6 +5,7 @@ pub mod query;
 pub mod serde;
 pub mod shared;
 pub mod string;
+pub mod time;
 
 mod itoa;
 pub use crate::itoa::Itoa;

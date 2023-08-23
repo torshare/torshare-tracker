@@ -13,6 +13,7 @@ percent-encoding = "2"
 itoa = "1"
 bytes = "1"
 ahash = "0.8"
+coarsetime = "0.1"
 
 [dev-dependencies]
 serde_test = "1"

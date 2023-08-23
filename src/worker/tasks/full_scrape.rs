@@ -3,7 +3,7 @@ use bytes::Bytes;
 
 use super::State;
 use crate::{
-    models::torrent::TorrentStatsDict,
+    models::torrent::TorrentStatsList,
     storage::Processor,
     worker::{Result, TaskOutput},
 };
@@ -19,14 +19,14 @@ impl super::TaskExecutor for TaskExecutor {
     type Output = Output;
 
     async fn execute(&self, mut input: Self::Input, state: State) -> Result<TaskOutput> {
-        let processor: &mut dyn Processor<TorrentStatsDict> = input.as_processor();
+        let processor: &mut dyn Processor<TorrentStatsList> = input.as_processor();
         let _ = state.storage.get_all_torrent_stats(processor).await?;
 
         Ok(TaskOutput::FullScrape(input))
     }
 }
 
-pub trait FullScrapeProcessor: Processor<TorrentStatsDict> + Send + Sync {
-    fn as_processor(&mut self) -> &mut dyn Processor<TorrentStatsDict>;
+pub trait FullScrapeProcessor: Processor<TorrentStatsList> + Send + Sync {
+    fn as_processor(&mut self) -> &mut dyn Processor<TorrentStatsList>;
     fn output(&mut self) -> Option<Bytes>;
 }

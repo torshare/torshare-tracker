@@ -11,6 +11,7 @@ Torshare Tracker is a high-performance and feature-rich BitTorrent tracker writt
 * [X] IPv4 and IPv6 support
 * [X] Private Torrents
 * [X] Reverse Proxy Support
+* [X] High Availability via [Redis](https://redis.io/) 
 
 ## Implemented BEPs
 * [BEP 3](https://www.bittorrent.org/beps/bep_0003.html): The BitTorrent Protocol
