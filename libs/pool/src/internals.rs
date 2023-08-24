@@ -52,7 +52,7 @@ where
         }
     }
 
-    fn send_connection(&mut self, tx: GetConnTx<M::Connection, M::Error>) {
+    fn send_connection(&mut self, tx: GetConnTx<M::Connection>) {
         match self.internals.get() {
             Some(conn) => {
                 let shared = self.shared.clone();
@@ -100,13 +100,13 @@ where
     }
 }
 
-type GetConnTx<C, E> = oneshot::Sender<Result<Option<Conn<C>>, PoolError<E>>>;
+type GetConnTx<C> = oneshot::Sender<Result<Option<Conn<C>>, PoolError>>;
 
 pub(crate) enum Message<M>
 where
     M: ManageConnection + Send,
 {
-    GetConn(GetConnTx<M::Connection, M::Error>),
+    GetConn(GetConnTx<M::Connection>),
     PutConn(Conn<M::Connection>),
     State(oneshot::Sender<State>),
     Reap,
@@ -220,7 +220,7 @@ where
         }
     }
 
-    async fn make_new_connection(&self, tx: GetConnTx<M::Connection, M::Error>) {
+    async fn make_new_connection(&self, tx: GetConnTx<M::Connection>) {
         let connection_timeout = Instant::now() + self.statics.connection_timeout;
 
         loop {
@@ -251,11 +251,7 @@ where
         }
     }
 
-    async fn send_connection(
-        &self,
-        mut conn: Conn<M::Connection>,
-        tx: GetConnTx<M::Connection, M::Error>,
-    ) {
+    async fn send_connection(&self, mut conn: Conn<M::Connection>, tx: GetConnTx<M::Connection>) {
         if self.statics.test_on_check_out {
             if let Err(err) = self.manager.is_valid(&mut conn.conn).await {
                 self.statics.error_sink.sink(err);
@@ -266,7 +262,7 @@ where
         let _ = tx.send(Ok(Some(conn)));
     }
 
-    async fn retry_for_get_conn(&self, tx: GetConnTx<M::Connection, M::Error>) {
+    async fn retry_for_get_conn(&self, tx: GetConnTx<M::Connection>) {
         match self.weak_tx.upgrade() {
             Some(channel) => match channel.send(Message::GetConn(tx)).await {
                 Ok(_) => {}

@@ -27,7 +27,7 @@ impl<M: ManageConnection> Pool<M> {
     }
 
     /// Returns a new `PooledConnection`.
-    pub async fn get(&self) -> Result<Option<PooledConnection<'_, M>>, PoolError<M::Error>> {
+    pub async fn get(&self) -> Result<Option<PooledConnection<'_, M>>, PoolError> {
         self.inner
             .get()
             .await
@@ -281,9 +281,9 @@ where
 }
 
 /// Represents errors that can occur while working with a connection pool.
-pub enum PoolError<E> {
+pub enum PoolError {
     /// An error occurred while creating a new connection.
-    ConnectionError(E),
+    ConnectionError,
 
     /// The pool has been closed.
     Closed,
@@ -292,25 +292,19 @@ pub enum PoolError<E> {
     Timeout,
 }
 
-impl<E: Debug> From<E> for PoolError<E> {
-    fn from(err: E) -> Self {
-        Self::ConnectionError(err)
-    }
-}
-
-impl<E: Debug> fmt::Display for PoolError<E> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self, f)
-    }
-}
-
-impl<E: Debug> fmt::Debug for PoolError<E> {
+impl fmt::Display for PoolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ConnectionError(err) => write!(f, "{:?}", err),
-            Self::Closed => write!(f, "Closed"),
-            Self::Timeout => write!(f, "Timeout"),
+            Self::Closed => write!(f, "PoolError::Closed"),
+            Self::Timeout => write!(f, "PoolError::Timeout"),
+            Self::ConnectionError => write!(f, "PoolError::ConnectionError"),
         }
+    }
+}
+
+impl fmt::Debug for PoolError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
 

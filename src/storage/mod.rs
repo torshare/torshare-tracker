@@ -128,7 +128,7 @@ struct ErrorImpl {
 #[derive(Debug)]
 enum Kind {
     Known(&'static str),
-    Custom(String),
+    Unknown(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -148,7 +148,7 @@ impl From<String> for Error {
     fn from(err: String) -> Self {
         Self {
             inner: Box::new(ErrorImpl {
-                kind: Kind::Custom(err),
+                kind: Kind::Unknown(err),
                 cause: None,
             }),
         }
@@ -163,7 +163,7 @@ impl Error {
 
     fn description(&self) -> &str {
         match self.inner.kind {
-            Kind::Custom(ref msg) => msg,
+            Kind::Unknown(ref msg) => msg,
             Kind::Known(msg) => msg,
         }
     }

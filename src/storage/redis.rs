@@ -288,8 +288,8 @@ impl From<redis::RedisError> for super::Error {
     }
 }
 
-impl From<PoolError<redis::RedisError>> for super::Error {
-    fn from(err: PoolError<redis::RedisError>) -> Self {
+impl From<PoolError> for super::Error {
+    fn from(err: PoolError) -> Self {
         Self::from(err.to_string())
     }
 }

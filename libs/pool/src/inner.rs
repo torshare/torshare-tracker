@@ -56,7 +56,7 @@ where
     }
 
     /// Get a connection from the pool
-    pub(crate) async fn get(&self) -> Result<Option<Conn<M::Connection>>, PoolError<M::Error>> {
+    pub(crate) async fn get(&self) -> Result<Option<Conn<M::Connection>>, PoolError> {
         let (tx, rx) = oneshot::channel();
 
         if self.channel.send(Message::GetConn(tx)).await.is_err() {
