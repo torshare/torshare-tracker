@@ -1,6 +1,9 @@
 use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
 
-use crate::{api::Builder, ManageConnection};
+use crate::{
+    api::{Builder, PoolError},
+    ManageConnection,
+};
 use std::{
     collections::VecDeque,
     sync::{Arc, Weak},
@@ -49,32 +52,24 @@ where
         }
     }
 
-    async fn send_connection(&mut self, tx: GetConnTx<M::Connection, M::Error>) {
-        loop {
-            match self.internals.get() {
-                Some(conn) => {
-                    let shared = self.shared.clone();
-                    tokio::spawn(async move { shared.send_connection(conn.into(), tx).await });
-                    return;
-                }
-                None if self.shared.semaphore.available_permits() > 0 => {
-                    let shared = self.shared.clone();
-                    let permit = shared.semaphore.clone().acquire_owned().await.unwrap();
-                    tokio::spawn(async move { shared.make_new_connection(tx, permit).await });
-                    return;
-                }
-                _ => {}
-            };
-
-            tokio::task::yield_now().await;
-        }
+    fn send_connection(&mut self, tx: GetConnTx<M::Connection, M::Error>) {
+        match self.internals.get() {
+            Some(conn) => {
+                let shared = self.shared.clone();
+                tokio::spawn(async move { shared.send_connection(conn.into(), tx).await });
+            }
+            _ => {
+                let shared = self.shared.clone();
+                tokio::spawn(async move { shared.make_new_connection(tx).await });
+            }
+        };
     }
 
     async fn run(mut self: SharedPool<M>, mut rx: mpsc::Receiver<Message<M>>) {
         while let Some(msg) = rx.recv().await {
             match msg {
                 Message::GetConn(tx) => {
-                    self.send_connection(tx).await;
+                    self.send_connection(tx);
                 }
 
                 Message::PutConn(mut conn) => {
@@ -105,7 +100,7 @@ where
     }
 }
 
-type GetConnTx<C, E> = oneshot::Sender<Result<Option<Conn<C>>, E>>;
+type GetConnTx<C, E> = oneshot::Sender<Result<Option<Conn<C>>, PoolError<E>>>;
 
 pub(crate) enum Message<M>
 where
@@ -225,21 +220,34 @@ where
         }
     }
 
-    async fn make_new_connection(
-        &self,
-        tx: GetConnTx<M::Connection, M::Error>,
-        permit: OwnedSemaphorePermit,
-    ) {
-        let result = match self.manager.connect().await {
-            Ok(conn) => Some(Conn::new(conn, permit)),
-            Err(err) => {
-                self.statics.error_sink.sink(err);
-                None
-            }
-        };
+    async fn make_new_connection(&self, tx: GetConnTx<M::Connection, M::Error>) {
+        let connection_timeout = Instant::now() + self.statics.connection_timeout;
 
-        if let Some(conn) = result {
-            let _ = tx.send(Ok(Some(conn)));
+        loop {
+            if self.semaphore.available_permits() == 0 {
+                return self.retry_for_get_conn(tx).await;
+            }
+
+            let permit = self.semaphore.clone().acquire_owned().await.unwrap();
+            let result = match self.manager.connect().await {
+                Ok(conn) => Some(Conn::new(conn, permit)),
+                Err(err) => {
+                    self.statics.error_sink.sink(err);
+                    None
+                }
+            };
+
+            if let Some(conn) = result {
+                let _ = tx.send(Ok(Some(conn)));
+                return;
+            }
+
+            if Instant::now() > connection_timeout {
+                let _ = tx.send(Err(PoolError::Timeout));
+                return;
+            }
+
+            tokio::task::yield_now().await;
         }
     }
 
@@ -251,15 +259,27 @@ where
         if self.statics.test_on_check_out {
             if let Err(err) = self.manager.is_valid(&mut conn.conn).await {
                 self.statics.error_sink.sink(err);
-
-                if let Some(channel) = self.weak_tx.upgrade() {
-                    let _ = channel.send(Message::GetConn(tx)).await;
-                }
-
-                return;
+                return self.retry_for_get_conn(tx).await;
             }
         }
 
         let _ = tx.send(Ok(Some(conn)));
+    }
+
+    async fn retry_for_get_conn(&self, tx: GetConnTx<M::Connection, M::Error>) {
+        match self.weak_tx.upgrade() {
+            Some(channel) => match channel.send(Message::GetConn(tx)).await {
+                Ok(_) => {}
+                Err(err) => match err.0 {
+                    Message::GetConn(tx) => {
+                        let _ = tx.send(Err(PoolError::Closed));
+                    }
+                    _ => unreachable!(),
+                },
+            },
+            None => {
+                let _ = tx.send(Err(PoolError::Closed));
+            }
+        }
     }
 }

@@ -27,7 +27,7 @@ impl<M: ManageConnection> Pool<M> {
     }
 
     /// Returns a new `PooledConnection`.
-    pub async fn get(&self) -> Result<Option<PooledConnection<'_, M>>, M::Error> {
+    pub async fn get(&self) -> Result<Option<PooledConnection<'_, M>>, PoolError<M::Error>> {
         self.inner
             .get()
             .await
@@ -185,6 +185,7 @@ impl<M: ManageConnection> Builder<M> {
 pub trait ManageConnection: Sized + Send + Sync + 'static {
     /// The connection type this manager deals with.
     type Connection: Send + 'static;
+
     /// The error type returned by `Connection`s.
     type Error: fmt::Debug + Send + 'static;
 
@@ -276,6 +277,40 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_fmt(format_args!("Pool({:?})", self.inner))
+    }
+}
+
+/// Represents errors that can occur while working with a connection pool.
+pub enum PoolError<E> {
+    /// An error occurred while creating a new connection.
+    ConnectionError(E),
+
+    /// The pool has been closed.
+    Closed,
+
+    /// A timeout occurred while waiting for a connection.
+    Timeout,
+}
+
+impl<E: Debug> From<E> for PoolError<E> {
+    fn from(err: E) -> Self {
+        Self::ConnectionError(err)
+    }
+}
+
+impl<E: Debug> fmt::Display for PoolError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self, f)
+    }
+}
+
+impl<E: Debug> fmt::Debug for PoolError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ConnectionError(err) => write!(f, "{:?}", err),
+            Self::Closed => write!(f, "Closed"),
+            Self::Timeout => write!(f, "Timeout"),
+        }
     }
 }
 

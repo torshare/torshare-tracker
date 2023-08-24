@@ -9,7 +9,7 @@ use tokio::{
 };
 
 use crate::{
-    api::Builder,
+    api::{Builder, PoolError},
     internals::{Conn, Message, SharedPool, State},
     ManageConnection,
 };
@@ -56,7 +56,7 @@ where
     }
 
     /// Get a connection from the pool
-    pub(crate) async fn get(&self) -> Result<Option<Conn<M::Connection>>, M::Error> {
+    pub(crate) async fn get(&self) -> Result<Option<Conn<M::Connection>>, PoolError<M::Error>> {
         let (tx, rx) = oneshot::channel();
 
         if self.channel.send(Message::GetConn(tx)).await.is_err() {

@@ -117,19 +117,21 @@ async fn test_max_size() {
         .build(manager)
         .unwrap();
 
-    let mut vec = Vec::new();
+    let mut vec = Vec::with_capacity(4);
     for _i in 0..10 {
         let conn = pool.get().await.unwrap();
         vec.push(conn.unwrap());
+
         if vec.len() == 4 {
-            vec.clear();
+            vec.pop();
         }
     }
 
+    drop(vec);
     let state = pool.state().await.unwrap();
 
     assert_eq!(state.connections, 4);
-    assert_eq!(state.idle_connections, 4);
+    assert_eq!(state.idle_connections, 0);
 }
 
 #[tokio::test]

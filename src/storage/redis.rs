@@ -4,7 +4,7 @@ use redis::{
     cmd, AsyncCommands, FromRedisValue, IntoConnectionInfo, RedisResult, Script, ToRedisArgs, Value,
 };
 use std::{mem, ops::DerefMut, sync::Arc, time::Duration};
-use ts_pool::{ManageConnection, Pool, PooledConnection};
+use ts_pool::{ManageConnection, Pool, PoolError, PooledConnection};
 
 use super::{Processor, Result, Storage};
 use crate::{
@@ -50,12 +50,10 @@ impl RedisStorage {
         }
     }
 
-    pub async fn get_connection(
-        &self,
-    ) -> RedisResult<PooledConnection<'_, RedisConnectionManager>> {
+    pub async fn get_connection(&self) -> Result<PooledConnection<'_, RedisConnectionManager>> {
         match self.pool.get().await {
             Ok(Some(conn)) => Ok(conn),
-            Ok(None) => Err((redis::ErrorKind::IoError, "failed to get connection").into()),
+            Ok(None) => Err("failed to get redis connection".into()),
             Err(err) => Err(err.into()),
         }
     }
@@ -286,6 +284,12 @@ impl Storage for RedisStorage {
 
 impl From<redis::RedisError> for super::Error {
     fn from(err: redis::RedisError) -> Self {
+        Self::from(err.to_string())
+    }
+}
+
+impl From<PoolError<redis::RedisError>> for super::Error {
+    fn from(err: PoolError<redis::RedisError>) -> Self {
         Self::from(err.to_string())
     }
 }
