@@ -7,6 +7,7 @@ use tokio::sync::{mpsc, oneshot};
 
 type Cause = Box<dyn StdError + Send + Sync>;
 
+/// An error that can occur while interacting with the worker.
 pub struct Error {
     inner: Box<ErrorImpl>,
 }
@@ -16,14 +17,12 @@ struct ErrorImpl {
     cause: Option<Cause>,
 }
 
-#[allow(unused)]
 #[derive(Debug)]
 enum Kind {
     Send,
     Recv,
-    TooManyRequests,
     Storage,
-    Custom(String),
+    Custom(&'static str),
 }
 
 impl From<mpsc::error::SendError<TaskPacket>> for Error {
@@ -48,14 +47,8 @@ impl From<oneshot::error::RecvError> for Error {
     }
 }
 
-impl From<&str> for Error {
-    fn from(err: &str) -> Self {
-        err.to_string().into()
-    }
-}
-
-impl From<String> for Error {
-    fn from(err: String) -> Self {
+impl From<&'static str> for Error {
+    fn from(err: &'static str) -> Self {
         Self {
             inner: Box::new(ErrorImpl {
                 kind: Kind::Custom(err),
@@ -86,10 +79,21 @@ impl Error {
         match self.inner.kind {
             Kind::Send => "failed to send message to task handler",
             Kind::Recv => "failed to receive message from worker",
-            Kind::TooManyRequests => "too many requests",
             Kind::Storage => "storage error",
-            Kind::Custom(ref str) => str,
+            Kind::Custom(str) => str,
         }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.description())
+    }
+}
+
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.inner.cause.as_ref().map(|cause| &**cause as _)
     }
 }
 
@@ -103,14 +107,6 @@ impl fmt::Debug for Error {
         f.finish()
     }
 }
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.description())
-    }
-}
-
-impl StdError for Error {}
 
 /// Define a type alias for the return type of a worker task.
 pub type Result<T> = std::result::Result<T, Error>;

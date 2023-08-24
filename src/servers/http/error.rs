@@ -2,7 +2,7 @@ use crate::{constants, worker};
 use bytes::Bytes;
 use http_body_util::{Either, Full};
 use hyper::{Response, StatusCode};
-use std::error::Error as StdError;
+use std::{error::Error as StdError, fmt};
 use ts_utils::bencode;
 
 use super::response::Body;
@@ -35,19 +35,27 @@ impl From<hyper::Error> for HttpError {
     }
 }
 
-impl std::fmt::Display for HttpError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for HttpError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             HttpError::NotFound => write!(f, "{}", constants::NOT_FOUND),
             HttpError::RequestTimeout => write!(f, "{}", constants::REQUEST_TIMEOUT),
             HttpError::Unauthorized => write!(f, "{}", constants::UNAUTHORIZED),
             HttpError::BadRequest(reason) => write!(f, "{}", reason),
-            HttpError::Other(reason) => write!(f, "{}", reason),
+            HttpError::Other(_) => write!(f, "{}", constants::INTERNAL_SERVER_ERROR),
         }
     }
 }
 
-impl StdError for HttpError {}
+impl StdError for HttpError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            HttpError::BadRequest(cause) => Some(cause.as_ref()),
+            HttpError::Other(cause) => Some(cause.as_ref()),
+            _ => None,
+        }
+    }
+}
 
 impl Into<Response<Body>> for HttpError {
     fn into(self) -> Response<Body> {

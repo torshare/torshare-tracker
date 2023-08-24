@@ -19,6 +19,7 @@ constant_strings! {
     (REQUEST_TIMEOUT, "Request Timeout"),
     (UNAUTHORIZED, "Unauthorized"),
     (BAD_REQUEST, "Bad request"),
+    (INTERNAL_SERVER_ERROR, "An Error Occurred, Please Try Again!"),
 
     // TRACKER
     (TRACKER_RESPONSE_TRACKER_ID, "tracker id"),

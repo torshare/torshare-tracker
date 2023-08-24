@@ -3,6 +3,7 @@ use serde::ser;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
+use std::fmt;
 use std::io::Error as IoError;
 use std::result::Result as StdResult;
 
@@ -649,7 +650,7 @@ pub enum Error {
 }
 
 impl ser::Error for Error {
-    fn custom<T: std::fmt::Display>(msg: T) -> Self {
+    fn custom<T: fmt::Display>(msg: T) -> Self {
         Error::Custom(msg.to_string())
     }
 }
@@ -664,7 +665,7 @@ impl StdError for Error {
 }
 
 impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let message = match *self {
             Error::IoError(ref error) => return error.fmt(f),
             Error::Custom(ref s) => s,

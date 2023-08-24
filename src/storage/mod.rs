@@ -21,10 +21,9 @@ pub use self::redis::RedisStorage;
 #[async_trait]
 pub trait Storage: Sync + Send {
     async fn insert_torrent(&self, info_hash: &InfoHash, stats: Option<Torrent>) -> Result<()>;
-
     async fn remove_torrent(&mut self, info_hash: &InfoHash) -> Result<()>;
-
     async fn has_torrent(&self, info_hash: &InfoHash) -> Result<bool>;
+    async fn get_torrent(&self, info_hash: &InfoHash) -> Result<Option<Torrent>>;
 
     async fn get_torrent_stats(
         &self,
@@ -116,8 +115,20 @@ pub trait Processor<Input>: Send {
 }
 
 type Cause = Box<dyn StdError + Send + Sync>;
+
 pub struct Error {
     inner: Box<ErrorImpl>,
+}
+
+impl Error {
+    fn runtime(cause: Cause) -> Self {
+        Self {
+            inner: Box::new(ErrorImpl {
+                kind: Kind::Runtime(None),
+                cause: Some(cause),
+            }),
+        }
+    }
 }
 
 struct ErrorImpl {
@@ -127,8 +138,8 @@ struct ErrorImpl {
 
 #[derive(Debug)]
 enum Kind {
-    Known(&'static str),
-    Unknown(String),
+    Runtime(Option<String>),
+    Custom(&'static str),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -137,18 +148,7 @@ impl From<&'static str> for Error {
     fn from(err: &'static str) -> Self {
         Self {
             inner: Box::new(ErrorImpl {
-                kind: Kind::Known(err),
-                cause: None,
-            }),
-        }
-    }
-}
-
-impl From<String> for Error {
-    fn from(err: String) -> Self {
-        Self {
-            inner: Box::new(ErrorImpl {
-                kind: Kind::Unknown(err),
+                kind: Kind::Custom(err),
                 cause: None,
             }),
         }
@@ -163,13 +163,23 @@ impl Error {
 
     fn description(&self) -> &str {
         match self.inner.kind {
-            Kind::Unknown(ref msg) => msg,
-            Kind::Known(msg) => msg,
+            Kind::Custom(ref msg) => msg,
+            Kind::Runtime(ref msg) => msg.as_deref().unwrap_or_default(),
         }
     }
 }
 
-impl StdError for Error {}
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.inner.cause.as_ref().map(|cause| &**cause as _)
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.description())
+    }
+}
 
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -179,11 +189,5 @@ impl fmt::Debug for Error {
             f.field(cause);
         }
         f.finish()
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.description())
     }
 }

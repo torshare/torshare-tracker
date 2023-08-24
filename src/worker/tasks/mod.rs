@@ -7,7 +7,7 @@ use crate::{config::TSConfig, storage::Storage};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-pub(super) fn err<T>(msg: &str) -> Result<T> {
+pub(super) fn err<T>(msg: &'static str) -> Result<T> {
     Err(msg.into())
 }
 

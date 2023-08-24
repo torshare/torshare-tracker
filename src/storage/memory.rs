@@ -72,6 +72,16 @@ impl Storage for MemoryStorage {
             .contains_key(info_hash))
     }
 
+    async fn get_torrent(&self, info_hash: &InfoHash) -> Result<Option<Torrent>> {
+        Ok(self
+            .get_shard(&info_hash)
+            .torrents
+            .read()
+            .await
+            .get(info_hash)
+            .cloned())
+    }
+
     async fn remove_torrent(&mut self, info_hash: &InfoHash) -> Result<()> {
         let shard = self.get_shard(&info_hash);
         shard.swarms.write().await.remove(info_hash);

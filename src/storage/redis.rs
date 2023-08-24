@@ -71,6 +71,16 @@ impl Storage for RedisStorage {
         Ok(())
     }
 
+    async fn get_torrent(&self, info_hash: &InfoHash) -> Result<Option<Torrent>> {
+        let torrent_key = TorrentKey(info_hash).encode();
+        let torrent: Option<Torrent> = cmd("HGETALL")
+            .arg(torrent_key.as_ref())
+            .query_async(self.get_connection().await?.deref_mut())
+            .await?;
+
+        Ok(torrent)
+    }
+
     async fn has_torrent(&self, info_hash: &InfoHash) -> Result<bool> {
         Ok(self
             .get_connection()
@@ -284,13 +294,13 @@ impl Storage for RedisStorage {
 
 impl From<redis::RedisError> for super::Error {
     fn from(err: redis::RedisError) -> Self {
-        Self::from(err.to_string())
+        Self::runtime(Box::new(err))
     }
 }
 
 impl From<PoolError> for super::Error {
     fn from(err: PoolError) -> Self {
-        Self::from(err.to_string())
+        Self::runtime(Box::new(err))
     }
 }
 
