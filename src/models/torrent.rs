@@ -27,8 +27,8 @@ pub struct TorrentSwarm {
 
 #[derive(Debug, Default, Clone)]
 pub struct SwarmStats {
-    pub complete: usize,
-    pub incomplete: usize,
+    pub complete: u32,
+    pub incomplete: u32,
 }
 
 macro_rules! update_peer_fields {
@@ -43,13 +43,13 @@ macro_rules! update_peer_fields {
 
 impl TorrentSwarm {
     /// Returns the number of seeders in the swarm.
-    pub fn complete_count(&self) -> usize {
-        self.seeders.len()
+    pub fn complete_count(&self) -> u32 {
+        self.seeders.len() as u32
     }
 
     /// Returns the number of leechers in the swarm.
-    pub fn incomplete_count(&self) -> usize {
-        self.leechers.len() + self.partial_seeds.len()
+    pub fn incomplete_count(&self) -> u32 {
+        (self.leechers.len() + self.partial_seeds.len()) as u32
     }
 
     pub fn insert_peer(

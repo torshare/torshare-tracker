@@ -15,7 +15,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use bytes::BytesMut;
-use std::{net::IpAddr, ops::Range};
+use std::{cmp, net::IpAddr, ops::Range};
 use ts_utils::time::Clock;
 
 pub struct TaskExecutor;
@@ -119,8 +119,8 @@ impl super::TaskExecutor for TaskExecutor {
 
                 (peers, peers6) = processor.into_output();
 
-                complete = stats.complete as u32;
-                incomplete = stats.incomplete as u32;
+                complete = stats.complete;
+                incomplete = stats.incomplete;
             }
 
             let interval = config.announce_interval();
@@ -158,7 +158,7 @@ impl<'a> ResponsePeersExtractor<'a> {
         peer_ip_type: IpType,
         config: &TSConfig,
     ) -> Self {
-        let numwant = std::cmp::min(
+        let numwant = cmp::min(
             req.numwant.unwrap_or(config.default_numwant()),
             config.max_numwant(),
         ) as usize;

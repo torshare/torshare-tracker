@@ -176,7 +176,6 @@ impl<M: ManageConnection> Builder<M> {
 
     pub fn build(self, manager: M) -> Result<Pool<M>, M::Error> {
         let pool = self.build_inner(manager);
-        // pool.inner.start_connections().await.map(|()| pool)
         Ok(pool)
     }
 }

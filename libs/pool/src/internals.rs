@@ -44,8 +44,8 @@ where
         let conns = &self.internals.conns;
 
         State {
-            connections: shared.statics.max_size - shared.semaphore.available_permits() as u32,
-            idle_connections: conns.len() as u32,
+            connections: (shared.statics.max_size as usize) - shared.semaphore.available_permits(),
+            idle_connections: conns.len(),
         }
     }
 
@@ -59,7 +59,8 @@ where
                 }
                 None if self.shared.semaphore.available_permits() > 0 => {
                     let shared = self.shared.clone();
-                    tokio::spawn(async move { shared.make_new_connection(tx).await });
+                    let permit = shared.semaphore.clone().acquire_owned().await.unwrap();
+                    tokio::spawn(async move { shared.make_new_connection(tx, permit).await });
                     return;
                 }
                 _ => {}
@@ -195,10 +196,10 @@ impl<C: Send> From<Conn<C>> for IdleConn<C> {
 #[non_exhaustive]
 pub struct State {
     /// The number of connections currently being managed by the pool.
-    pub connections: u32,
+    pub connections: usize,
 
     /// The number of idle connections.
-    pub idle_connections: u32,
+    pub idle_connections: usize,
 }
 
 struct Shared<M>
@@ -218,18 +219,17 @@ where
     fn new(manager: M, builder: Builder<M>, weak_tx: Weak<mpsc::Sender<Message<M>>>) -> Self {
         Self {
             manager,
+            weak_tx,
             semaphore: Arc::new(Semaphore::new(builder.max_size as usize)),
             statics: builder,
-            weak_tx,
         }
     }
 
-    async fn make_new_connection(&self, tx: GetConnTx<M::Connection, M::Error>) {
-        if self.semaphore.available_permits() == 0 {
-            return;
-        }
-
-        let permit = self.semaphore.clone().acquire_owned().await.unwrap();
+    async fn make_new_connection(
+        &self,
+        tx: GetConnTx<M::Connection, M::Error>,
+        permit: OwnedSemaphorePermit,
+    ) {
         let result = match self.manager.connect().await {
             Ok(conn) => Some(Conn::new(conn, permit)),
             Err(err) => {

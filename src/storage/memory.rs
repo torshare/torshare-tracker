@@ -99,7 +99,7 @@ impl Storage for MemoryStorage {
             .read()
             .await
             .get_swarm(info_hash, ip_type)
-            .map(|s| (s.complete_count() as u32, s.incomplete_count() as u32))
+            .map(|s| (s.complete_count(), s.incomplete_count()))
             .unwrap_or_default();
 
         Ok(TorrentStats {
@@ -146,13 +146,13 @@ impl Storage for MemoryStorage {
             let swarms = shard.swarms.read().await;
             for (info_hash, swarm) in stats.iter_mut() {
                 if let Some(s) = swarms.get(info_hash, IpType::V4) {
-                    swarm.seeders = s.complete_count() as u32;
-                    swarm.incomplete = s.incomplete_count() as u32;
+                    swarm.seeders = s.complete_count();
+                    swarm.incomplete = s.incomplete_count();
                 }
 
                 if let Some(s) = swarms.get(info_hash, IpType::V6) {
-                    swarm.seeders += s.complete_count() as u32;
-                    swarm.incomplete += s.incomplete_count() as u32;
+                    swarm.seeders += s.complete_count();
+                    swarm.incomplete += s.incomplete_count();
                 }
             }
 
