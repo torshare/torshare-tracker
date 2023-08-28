@@ -2,7 +2,7 @@ use crate::config::{StorageType, TSConfig};
 use crate::models::common::{InfoHash, IpType};
 use crate::models::peer::{Peer, PeerType};
 use crate::models::torrent::{
-    PeerDict, PeerIdKey, SwarmStats, Torrent, TorrentStats, TorrentStatsList,
+    PeerDict, PeerIdKey, PeerList, SwarmStats, Torrent, TorrentStats, TorrentStatsList,
 };
 use async_trait::async_trait;
 use std::error::Error as StdError;
@@ -35,7 +35,7 @@ pub trait Storage: Sync + Send {
         &self,
         info_hashes: Vec<InfoHash>,
         ip_type: IpType,
-    ) -> Result<Vec<(InfoHash, TorrentStats)>>;
+    ) -> Result<TorrentStatsList>;
 
     async fn get_all_torrent_stats(
         &self,
@@ -70,7 +70,7 @@ pub trait Storage: Sync + Send {
         info_hash: &InfoHash,
         peer_type: PeerType,
         peer_ip_type: IpType,
-        processor: &mut dyn Processor<PeerDict>,
+        extractor: &mut dyn PeerExtractor,
     ) -> Result<SwarmStats>;
 
     async fn remove_peer_from_swarm(
@@ -100,20 +100,6 @@ pub fn create_new_storage(config: Arc<TSConfig>) -> Result<Box<dyn Storage>> {
     }
 }
 
-pub trait Processor<Input>: Send {
-    /// Process the input data and return a boolean value indicating whether
-    /// processing should continue or stop.
-    ///
-    /// # Arguments
-    ///
-    /// - `input`: The input data to be processed.
-    ///
-    /// # Returns
-    ///
-    /// A boolean value indicating whether processing should continue (true) or stop (false).
-    fn process(&mut self, input: &Input) -> bool;
-}
-
 type Cause = Box<dyn StdError + Send + Sync>;
 
 pub struct Error {
@@ -121,6 +107,7 @@ pub struct Error {
 }
 
 impl Error {
+    #[allow(unused)]
     fn runtime(cause: Cause) -> Self {
         Self {
             inner: Box::new(ErrorImpl {
@@ -137,6 +124,7 @@ struct ErrorImpl {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 enum Kind {
     Runtime(Option<String>),
     Custom(&'static str),
@@ -177,7 +165,11 @@ impl StdError for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.description())
+        if let Some(ref cause) = self.inner.cause {
+            write!(f, "{}: {}", self.description(), cause)
+        } else {
+            f.write_str(self.description())
+        }
     }
 }
 
@@ -190,4 +182,23 @@ impl fmt::Debug for Error {
         }
         f.finish()
     }
+}
+
+pub trait Processor<Input>: Send {
+    /// Process the input data and return a boolean value indicating whether
+    /// processing should continue or stop.
+    ///
+    /// # Arguments
+    ///
+    /// - `input`: The input data to be processed.
+    ///
+    /// # Returns
+    ///
+    /// A boolean value indicating whether processing should continue (true) or stop (false).
+    fn process(&mut self, input: &Input) -> bool;
+}
+
+pub trait PeerExtractor: Send {
+    fn from_dict(&mut self, dict: &PeerDict) -> bool;
+    fn from_list(&mut self, list: &PeerList) -> bool;
 }

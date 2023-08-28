@@ -2,11 +2,7 @@ use super::{
     common::{InfoHash, IntervalDuration, NumOfBytes, PeerId, PeerKey, Port},
     torrent::TorrentStats,
 };
-use crate::{
-    constants,
-    utils::Loggable,
-    worker::{self, TaskOutput},
-};
+use crate::{constants, utils::Loggable, worker::TaskOutput};
 use serde::{ser::SerializeSeq, Deserialize, Serialize};
 use std::{fmt, net::IpAddr};
 use ts_utils::{
@@ -286,9 +282,7 @@ impl Bencode for TrackerError {
 
 impl From<&str> for TrackerError {
     fn from(err: &str) -> Self {
-        Self {
-            failure_reason: err.to_string(),
-        }
+        err.to_string().into()
     }
 }
 
@@ -296,14 +290,6 @@ impl From<String> for TrackerError {
     fn from(err: String) -> Self {
         Self {
             failure_reason: err,
-        }
-    }
-}
-
-impl From<worker::Error> for TrackerError {
-    fn from(err: worker::Error) -> Self {
-        Self {
-            failure_reason: err.to_string(),
         }
     }
 }

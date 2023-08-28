@@ -28,10 +28,20 @@ pub struct MemoryStorageConfig {
 pub struct RedisStorageConfig {
     /// The URL of the Redis server.
     pub url: String,
+
     /// The minimum number of idle connections to keep open with the Redis server.
     pub min_idle_connections: u32,
+
     /// The maximum number of connections that the application can establish with the Redis server.
     pub max_connections: u32,
+
+    /// The maximum number of seconds to wait for a connection to become available.
+    #[serde(deserialize_with = "deserialize_secs_to_duration")]
+    pub max_connection_wait_time: Duration,
+
+    /// The maximum number of seconds to keep an idle connection open.
+    #[serde(deserialize_with = "deserialize_secs_to_duration")]
+    pub idle_connection_time: Duration,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

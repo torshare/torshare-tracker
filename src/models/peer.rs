@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    ops,
 };
 use ts_utils::time::{Clock, Duration};
 
@@ -181,7 +182,7 @@ impl Serialize for PeerAddr {
 #[derive(PartialEq, Eq, Clone)]
 pub struct PeerAddrV4([u8; PEER_ADDR_V4_LENGTH]);
 
-impl std::ops::Deref for PeerAddrV4 {
+impl ops::Deref for PeerAddrV4 {
     type Target = [u8; PEER_ADDR_V4_LENGTH];
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -191,9 +192,21 @@ impl std::ops::Deref for PeerAddrV4 {
 #[derive(PartialEq, Eq, Clone)]
 pub struct PeerAddrV6([u8; PEER_ADDR_V6_LENGTH]);
 
-impl std::ops::Deref for PeerAddrV6 {
+impl ops::Deref for PeerAddrV6 {
     type Target = [u8; PEER_ADDR_V6_LENGTH];
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl TryFrom<&[u8]> for PeerAddr {
+    type Error = &'static str;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        match value.len() {
+            PEER_ADDR_V4_LENGTH => Ok(PeerAddr::V4(PeerAddrV4(value.try_into().unwrap()))),
+            PEER_ADDR_V6_LENGTH => Ok(PeerAddr::V6(PeerAddrV6(value.try_into().unwrap()))),
+            _ => Err("invalid peer address length"),
+        }
     }
 }

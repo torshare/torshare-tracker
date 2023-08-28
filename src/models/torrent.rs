@@ -8,8 +8,11 @@ use super::{
     peer::{Peer, PeerType},
 };
 
-/// Represents a collection of peers, where each peer is identified by a `PeerIdHash`.
+/// Represents a collection of peers, where each peer is identified by a `PeerIdKey`.
 pub type PeerDict = IndexMap<PeerIdKey, Peer, RandomState>;
+
+/// A type alias for a list of peers represented as a `Vec`.
+pub type PeerList = Vec<(PeerIdKey, Peer)>;
 
 /// Represents the swarm associated with a specific torrent in a BitTorrent tracker.
 /// The swarm contains lists of different types of peers, as well as information about the torrent's completion status.
@@ -29,6 +32,15 @@ pub struct TorrentSwarm {
 pub struct SwarmStats {
     pub complete: u32,
     pub incomplete: u32,
+}
+
+impl From<TorrentStats> for SwarmStats {
+    fn from(stats: TorrentStats) -> Self {
+        Self {
+            complete: stats.seeders,
+            incomplete: stats.incomplete,
+        }
+    }
 }
 
 macro_rules! update_peer_fields {

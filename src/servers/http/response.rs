@@ -1,7 +1,6 @@
 use std::{
     convert::Infallible,
     pin::Pin,
-    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -9,6 +8,7 @@ use bytes::Bytes;
 use futures::Stream;
 use http_body_util::{Either, Full, StreamBody};
 use hyper::{body::Frame, Response, StatusCode};
+use ts_utils::Shared;
 
 pub(super) type Body = Either<Full<Bytes>, StreamBody<BodyStream>>;
 
@@ -80,8 +80,8 @@ impl From<Bytes> for BodyStream {
     }
 }
 
-impl From<Arc<Bytes>> for BodyStream {
-    fn from(data: Arc<Bytes>) -> Self {
+impl From<Shared<Bytes>> for BodyStream {
+    fn from(data: Shared<Bytes>) -> Self {
         Self::new(Data::Shared(data))
     }
 }
@@ -115,7 +115,7 @@ impl Into<StreamBody<BodyStream>> for BodyStream {
 #[derive(Debug)]
 enum Data {
     Owned(Bytes),
-    Shared(Arc<Bytes>),
+    Shared(Shared<Bytes>),
 }
 
 impl std::ops::Deref for Data {

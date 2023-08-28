@@ -13,6 +13,9 @@ percent-encoding = "2"
 itoa = "1"
 bytes = "1"
 ahash = "0.8"
+triomphe = "0.1"
+
+[target.'cfg(target_has_atomic = "64")'.dependencies]
 coarsetime = "0.1"
 
 [dev-dependencies]

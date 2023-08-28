@@ -9,5 +9,7 @@ target/
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
+# project dev files
 conf/local.toml
 blocklist.txt
+__private

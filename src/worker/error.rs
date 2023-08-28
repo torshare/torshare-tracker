@@ -87,13 +87,11 @@ impl Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.description())
-    }
-}
-
-impl StdError for Error {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        self.inner.cause.as_ref().map(|cause| &**cause as _)
+        if let Some(ref cause) = self.inner.cause {
+            write!(f, "{}: {}", self.description(), cause)
+        } else {
+            f.write_str(self.description())
+        }
     }
 }
 
@@ -105,6 +103,12 @@ impl fmt::Debug for Error {
             f.field(cause);
         }
         f.finish()
+    }
+}
+
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.inner.cause.as_ref().map(|cause| &**cause as _)
     }
 }
 

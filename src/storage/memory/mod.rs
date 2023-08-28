@@ -3,15 +3,13 @@ use async_trait::async_trait;
 use indexmap::IndexMap;
 use tokio::sync::RwLock;
 
-use super::{Processor, Result, Storage};
+use super::{PeerExtractor, Processor, Result, Storage};
 use crate::{
     constants::TRACKER_ERROR_NOT_FOUND_TORRENT,
     models::{
         common::{InfoHash, IpType},
         peer::{Peer, PeerType},
-        torrent::{
-            PeerDict, PeerIdKey, SwarmStats, Torrent, TorrentStats, TorrentStatsList, TorrentSwarm,
-        },
+        torrent::{PeerIdKey, SwarmStats, Torrent, TorrentStats, TorrentStatsList, TorrentSwarm},
     },
 };
 
@@ -28,16 +26,6 @@ struct Shard {
     swarms: RwLock<SwarmsMap>,
 }
 
-macro_rules! process_peers {
-    ($swarm:expr, $stats:expr, $processor:expr, $( $peers_field:ident ),*) => {
-        $(
-            if !$processor.process(&$swarm.$peers_field) {
-                return Ok($stats);
-            }
-        )*
-    };
-}
-
 macro_rules! write_swarm {
     ($self:expr, $info_hash:expr, $ip_type:expr) => {
         $self
@@ -46,6 +34,16 @@ macro_rules! write_swarm {
             .write()
             .await
             .get_mut_or_insert_swarm($info_hash, $ip_type)?
+    };
+}
+
+macro_rules! extract_peers {
+    ($swarm:expr, $stats:expr, $extractor:expr, $( $peers_field:ident ),*) => {
+        $(
+            if !$extractor.from_dict(&$swarm.$peers_field) {
+                return Ok($stats);
+            }
+        )*
     };
 }
 
@@ -123,7 +121,7 @@ impl Storage for MemoryStorage {
         &self,
         info_hashes: Vec<InfoHash>,
         ip_type: IpType,
-    ) -> Result<Vec<(InfoHash, TorrentStats)>> {
+    ) -> Result<TorrentStatsList> {
         let mut result = Vec::with_capacity(info_hashes.len());
         for info_hash in info_hashes {
             if let Ok(stat) = self.get_torrent_stats(&info_hash, ip_type).await {
@@ -229,7 +227,7 @@ impl Storage for MemoryStorage {
         info_hash: &InfoHash,
         peer_type: PeerType,
         peer_ip_type: IpType,
-        processor: &mut dyn Processor<PeerDict>,
+        extractor: &mut dyn PeerExtractor,
     ) -> Result<SwarmStats> {
         let swarms = self.get_shard(info_hash).swarms.read().await;
         let swarm = swarms.get_swarm(info_hash, peer_ip_type)?;
@@ -241,9 +239,9 @@ impl Storage for MemoryStorage {
 
         match peer_type {
             PeerType::Leecher => {
-                process_peers!(swarm, stats, processor, seeders, leechers, partial_seeds);
+                extract_peers!(swarm, stats, extractor, seeders, leechers, partial_seeds);
             }
-            _ => process_peers!(swarm, stats, processor, leechers),
+            _ => extract_peers!(swarm, stats, extractor, leechers),
         };
 
         Ok(stats)

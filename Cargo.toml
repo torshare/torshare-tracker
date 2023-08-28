@@ -17,6 +17,7 @@ repository = "https://github.com/torshare/torshare-tracker"
 [dependencies]
 ts-utils = { path = "libs/utils" }
 ts-pool = { path = "libs/pool" }
+ts-cache = { path = "libs/cache" }
 
 serde = { version = "1.0", features = ["derive"] }
 config = "0.13"
@@ -36,12 +37,16 @@ socket2 = { version = "0.5.3", features = ["all"] }
 indexmap = { version = "2", features = ["serde"] }
 mimalloc = { version = "0.1", default-features = false, optional = true }
 
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { version = "0.5", optional = true }
+
 [dev-dependencies]
 
 [workspace]
 members = [
     "libs/utils",
-    "libs/pool"
+    "libs/pool",
+    "libs/cache"
 ]
 
 [profile.release]
@@ -68,3 +73,4 @@ inherits = "release-debug"
 default = ["redis-store"]
 redis-store = ["redis"]
 memalloc = ["mimalloc"]
+jemalloc = ["tikv-jemallocator"]

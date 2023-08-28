@@ -5,17 +5,17 @@ use crate::{
     models::{
         common::{IpType, NumOfBytes, PEER_ID_LENGTH},
         peer::{Peer, PeerType, PEER_ADDR_V4_LENGTH, PEER_ADDR_V6_LENGTH},
-        torrent::{PeerDict, PeerIdKey},
+        torrent::{PeerDict, PeerIdKey, PeerList},
         tracker::{
             AnnounceEvent, AnnounceRequest, AnnounceResponse, NonCompactPeer, ResponsePeerList,
         },
     },
-    storage::Processor,
+    storage::PeerExtractor,
     worker::{Result, TaskOutput},
 };
 use async_trait::async_trait;
 use bytes::BytesMut;
-use std::{cmp, net::IpAddr, ops::Range};
+use std::{cmp, net::IpAddr};
 use ts_utils::time::Clock;
 
 pub struct TaskExecutor;
@@ -177,8 +177,8 @@ impl<'a> ResponsePeersExtractor<'a> {
         }
     }
 
-    fn extract(&mut self, peer_dict: &PeerDict, range: Range<usize>) -> bool {
-        for (peer_id_key, peer) in &peer_dict[range] {
+    fn extract<'b>(&mut self, iter: impl Iterator<Item = (&'b PeerIdKey, &'b Peer)>) -> bool {
+        for (peer_id_key, peer) in iter {
             if self.peer_count >= self.numwant {
                 return false;
             }
@@ -227,16 +227,36 @@ impl<'a> ResponsePeersExtractor<'a> {
     }
 }
 
-impl<'a> Processor<PeerDict> for ResponsePeersExtractor<'a> {
-    fn process(&mut self, peer_dict: &PeerDict) -> bool {
-        let total_peers = peer_dict.len();
+impl<'a> PeerExtractor for ResponsePeersExtractor<'a> {
+    fn from_dict(&mut self, dict: &PeerDict) -> bool {
+        let total_peers = dict.len();
         if (self.numwant - self.peer_count) >= total_peers {
-            return self.extract(peer_dict, 0..total_peers);
+            return self.extract(dict[0..total_peers].iter());
         }
 
         let start = self.random_val % total_peers;
-        match self.extract(peer_dict, start..total_peers) {
-            true => self.extract(peer_dict, 0..start),
+        match self.extract(dict[start..total_peers].iter()) {
+            true => self.extract(dict[0..start].iter()),
+            false => false,
+        }
+    }
+
+    fn from_list(&mut self, list: &PeerList) -> bool {
+        let total_peers = list.len();
+
+        if (self.numwant - self.peer_count) >= total_peers {
+            let iter = list[0..total_peers].iter().map(|(k, v)| (k, v));
+            return self.extract(iter);
+        }
+
+        let start = self.random_val % total_peers;
+        let iter = list[0..total_peers].iter().map(|(k, v)| (k, v));
+
+        match self.extract(iter) {
+            true => {
+                let iter = list[0..start].iter().map(|(k, v)| (k, v));
+                self.extract(iter)
+            }
             false => false,
         }
     }

@@ -116,10 +116,16 @@ shard_count = 1024
 [storage.redis]
 
 # The URL to connect to the Redis server.
-url = "redis://127.0.0.1:6379"
+url = "redis://127.0.0.1:6379/0"
 
 # The maximum number of connections that the application can establish with the Redis server.
 max_connections = 128
 
 # The minimum number of idle connections to keep open with the Redis server.
 min_idle_connections = 10
+
+# The maximum number of seconds to wait for a connection to become available.
+max_connection_wait_time = 10
+
+# The maximum number of seconds to keep an idle connection open.
+idle_connection_time = 60

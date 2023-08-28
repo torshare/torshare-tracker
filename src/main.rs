@@ -6,6 +6,12 @@ use ts_tracker::{app, config::TSConfig, signals::global_shutdown_signal};
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+#[cfg(not(target_env = "msvc"))]
+#[cfg(not(feature = "memalloc"))]
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 #[tokio::main]
 async fn main() {
     let config = TSConfig::new().expect("failed to load config");

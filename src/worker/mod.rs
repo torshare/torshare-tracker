@@ -113,6 +113,7 @@ impl WorkerLoop {
                     self.state = state;
                     let _ = sender.send(Ok(TaskOutput::None));
                 }
+
                 Task::Shutdown => {
                     self.receiver.close();
                     let _ = sender.send(Ok(TaskOutput::None));

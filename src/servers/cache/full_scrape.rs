@@ -1,6 +1,9 @@
 use bytes::Bytes;
 use std::sync::Arc;
-use ts_utils::time::{Duration, Instant};
+use ts_utils::{
+    time::{Duration, Instant},
+    Shared,
+};
 
 use super::Cache;
 use crate::{
@@ -12,13 +15,13 @@ use crate::{
 /// A cache for storing data related to full scrape responses for a BitTorrent tracker.
 #[derive(Debug, Default)]
 pub struct FullScrapeCache {
-    data: Option<Arc<bytes::Bytes>>,
+    data: Option<Shared<bytes::Bytes>>,
 }
 
 impl FullScrapeCache {
     pub fn new(data: bytes::Bytes) -> FullScrapeCache {
         FullScrapeCache {
-            data: Some(Arc::new(data)),
+            data: Some(Shared::new(data)),
         }
     }
 }
@@ -65,7 +68,7 @@ pub async fn refresh(cache: Arc<Cache>, worker: Arc<Worker>, expires_in: Duratio
 }
 
 impl std::ops::Deref for FullScrapeCache {
-    type Target = Option<Arc<bytes::Bytes>>;
+    type Target = Option<Shared<bytes::Bytes>>;
     fn deref(&self) -> &Self::Target {
         &self.data
     }

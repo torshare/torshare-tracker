@@ -297,7 +297,7 @@ pub type IntervalDuration = u32;
 
 /// Represents an IP address type, which can be either V4 (IPv4) or V6 (IPv6).
 /// This enum is used to differentiate between the two types of IP addresses.
-#[derive(Debug, PartialEq, Serialize, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Serialize, Clone, Copy)]
 pub enum IpType {
     V4, // IPv4 address type
     V6, // IPv6 address type
